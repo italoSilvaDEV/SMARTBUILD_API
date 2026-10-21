@@ -12,7 +12,7 @@ A tela "Bid Requests" serve para pedir orçamentos (propostas) de subcontratados
 
 ## Onde encontrar
 
-- Menu lateral: grupo "Financials", item "Bid Requests". Também aparece no menu "Bid Requests" da área de cadastro.
+- Menu lateral: grupo "Financials", item "Bid Requests".
 - Lista: `/seller/bid-requests`.
 - Nova solicitação: `/seller/bid-requests/new` (botão "New Bid Request").
 - Detalhes de uma solicitação: `/seller/bid-requests/:bidRequestId` (clique na linha da lista).

@@ -17,7 +17,7 @@ Você chega a ela clicando em uma linha da lista de projetos (veja o arquivo de 
 - Pela lista: "Projects" (Projetos) no menu "Workflow" e, em seguida, clique na linha do projeto.
 - Endereço: `/seller/project/details/:id`, onde `:id` é o projeto. Há também um endereço antigo, `/project/details/:id`, que abre a mesma página.
 - Quem vê: é preciso ter a permissão **"Projects"**.
-- Algumas abas exigem permissões extras (veja a seção de abas abaixo): "Schedule" (Cronograma) e "Tasks" (Tarefas). Se você não tiver a permissão, a aba não aparece.
+- Algumas abas exigem permissões extras (veja a seção de abas abaixo): a aba "Schedule" (Cronograma) e a aba "Tasks" (Tarefas). Se você não tiver a permissão da aba, ela não aparece.
 
 ## O que aparece na tela
 
@@ -25,7 +25,7 @@ Você chega a ela clicando em uma linha da lista de projetos (veja o arquivo de 
 
 - Foto de capa do projeto (ou um espaço vazio com "Add Cover" – Adicionar capa). Você pode trocar ou remover a capa. Ao remover, o sistema pede confirmação com "Do you want to remove the cover photo?" (Quer remover a foto da capa?).
 - Nome do cliente em destaque.
-- Etiqueta com o status atual do projeto (Pre-Start, In Progress, Final walkthrough ou Finished). A mudança de status é feita pela lista de projetos.
+- Etiqueta com o status atual do projeto (Pre-Start, In Progress, Final walkthrough ou Finished). A mudança de status pode ser feita aqui, na aba Details, clicando no status em "Project Information", ou pela lista de projetos ("Change Status").
 - Botão de três pontos (sem texto) com as ações:
   - "Adjust Duration" (Ajustar duração): altera a data de início e o prazo final da obra.
   - "Add Project Manager" (Adicionar gerente de projeto): define o gerente de projeto.
@@ -39,8 +39,8 @@ As abas aparecem nesta ordem:
 | Aba (como aparece) | Português | O que mostra |
 |---|---|---|
 | Details | Detalhes | Resumo financeiro, dados do cliente, dados do projeto e localização. |
-| Schedule | Cronograma | Calendário de serviços e trabalhos do projeto. Exige a permissão de aba "Schedule". |
-| Tasks | Tarefas | Tarefas da equipe ligadas ao projeto. Exige a permissão de aba "Tasks". |
+| Schedule | Cronograma | Calendário de serviços e trabalhos do projeto. Exige a permissão de aba do cronograma. |
+| Tasks | Tarefas | Tarefas da equipe ligadas ao projeto. Exige a permissão de aba das tarefas. |
 | Reports | Relatórios | Feed do projeto, com as atualizações dos funcionários. Veja o arquivo de feed. |
 | Estimates | Orçamentos | Orçamentos do projeto. Veja o arquivo de orçamentos. |
 | Work Orders | Ordens de Serviço | Ordens de serviço do projeto. Veja o arquivo de ordens de serviço. |
@@ -162,7 +162,7 @@ Mostra o feed do projeto, com as atualizações publicadas pelos funcionários. 
 
 ## Status e ciclo de vida
 
-- O status do projeto aparece no cabeçalho. Ele muda pela lista de projetos (menu "Change Status").
+- O status do projeto aparece no cabeçalho. Para mudar, clique no status em "Project Information", na aba Details, e escolha "Pre-Start", "In Progress", "Final walkthrough" ou "Finished". Também é possível pela lista de projetos (menu "Change Status").
 - Os serviços têm status próprio, alterado na aba Services: "Not Started", "Scheduled", "In Progress", "Final walkthrough" e "Finished".
 - As tarefas têm status próprio: "Open", "In Progress", "Completed" e "Canceled".
 - O status de uma ordem de alteração (pendente, aprovada ou cancelada) é tratado na aba Change Orders.
@@ -215,12 +215,12 @@ Mostra o feed do projeto, com as atualizações publicadas pelos funcionários. 
 - **Saldo devedor**: começa com o valor do projeto e diminui conforme os pagamentos. Com saldo zero, o sistema não permite criar nova fatura.
 - **Custo de funcionários**: vem das horas trabalhadas registradas no projeto. Lançamentos por hora multiplicam horas pelo valor da hora; lançamentos fixos usam o valor informado.
 - **Exclusão de tarefas, arquivos, pastas, custos e horas**: sempre pedem confirmação. Tarefas e arquivos excluídos não voltam.
-- **Permissões de aba**: sem a permissão "Schedule" ou "Tasks", essas abas somem e, se você estava nelas, a página volta para "Details".
-- **Mudança de status**: feita somente pela lista de projetos.
+- **Permissões de aba**: sem a permissão de aba do cronograma ou das tarefas, essas abas somem e, se você estava nelas, a página volta para "Details".
+- **Mudança de status**: feita na aba Details ("Project Information") ou pela lista de projetos ("Change Status"), com as opções "Pre-Start", "In Progress", "Final walkthrough" e "Finished".
 
 ## Relação com outros módulos
 
-- **Projects list (Lista de projetos)**: origem da navegação e onde o status do projeto é alterado.
+- **Projects list (Lista de projetos)**: origem da navegação; o status também pode ser alterado por lá.
 - **Clients (Clientes)**: dados do cliente exibidos e editados aqui.
 - **Estimates (Orçamentos)** e **Work Orders (Ordens de serviço)**: exibidos como abas do projeto.
 - **Change Orders (Ordens de alteração)**: aba própria, com aprovação pelo cliente.

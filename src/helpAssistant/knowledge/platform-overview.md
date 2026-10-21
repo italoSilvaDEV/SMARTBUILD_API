@@ -1,7 +1,7 @@
 ---
 title: Visão geral da plataforma SmartBuild
 module: general
-routes: [/home, /reports, /chat, /ai-assistant, /login, /company-selection, /subscription-plans, /subscription-expired]
+routes: [/home, /reports, /chat, /login, /company-selection, /subscription-plans, /subscription-expired]
 ---
 
 # Visão geral da plataforma SmartBuild
@@ -15,7 +15,7 @@ O SmartBuild é um sistema web para empresas de construção (contractors). Ele 
 - projetos, com serviços, agenda de trabalhos e despacho de equipe;
 - registro de horas dos funcionários em campo ("Time Cards") e atividades;
 - faturas, pagamentos online e contas a pagar;
-- relatórios, feed de publicações das obras, chat interno e um assistente de IA para consultar os dados da empresa.
+- relatórios, feed de publicações das obras, chat interno e o balão "Assistente SmartBuild" para tirar dúvidas sobre o uso do sistema.
 
 Cada empresa tem uma assinatura (plano). O plano define quais áreas do sistema estão liberadas para a empresa, e o perfil de cada usuário define o que ele pode fazer dentro dessas áreas.
 
@@ -55,7 +55,6 @@ Os nomes abaixo são os da interface em inglês, com o equivalente em português
 |---|---|---|
 | "Dashboard" (Painel) | "Dashboard" ou "Dashboard Simple" | Quem tem uma das duas. Veja o documento de Dashboard. |
 | "Tutorial (Coming Soon)" | "Tutorial" | Aparece desabilitado (em breve). Não funciona nesta versão. |
-| "IA Assistant (Beta)" (Assistente de IA, Beta) | nenhuma | Todos os usuários. |
 | "Reports" (Relatórios) | "Reports" | Quem tem a permissão. |
 
 **Grupo "Schedule" (Agenda)**
@@ -95,7 +94,7 @@ Os nomes abaixo são os da interface em inglês, com o equivalente em português
 | "User Management" (Gerenciamento de usuários) | "User Management" | Quem tem a permissão. |
 | "Settings" (Configurações) | "Settings" | Quem tem a permissão. A tela reúne a configuração de pagamentos online (Stripe) e o guia de integração com o QuickBooks. |
 
-Telas que existem fora do menu e são acessadas por links de outras telas: chat interno (ícone da barra superior, permissão "Chat"), notificações, páginas públicas que o cliente abre por link (orçamento, contrato, ordem de serviço, fatura e pagamento) e o aplicativo do funcionário.
+Telas que existem fora do menu e são acessadas por links de outras telas: chat interno (ícone da barra superior, permissão "Chat"), notificações, páginas públicas que o cliente abre por link (orçamento, contrato, ordem de serviço, fatura e pagamento) e o aplicativo do funcionário. O assistente SmartBuild não aparece no menu: ele fica no balão "Assistente SmartBuild", no canto inferior direito de todas as telas.
 
 ## Por que um item do menu não aparece
 
@@ -114,7 +113,7 @@ Checklist quando "algo sumiu" do menu:
 - Verifique se o item é "Accounts Payable". Ele só aparece para Owner, Administrator e Master.
 - Se a assinatura estiver expirada ou com pagamento recusado, o sistema leva o usuário para a tela de assinatura expirada antes de mostrar o menu (ver o documento de conta, planos e acesso).
 
-Se o usuário digitar diretamente o endereço de uma tela para a qual não tem permissão, aparece a tela "Access restricted", com a frase "You don't have permission to view this page." e o botão "Go back". Esse texto aparece só em inglês.
+Se o usuário digitar diretamente o endereço de uma tela para a qual não tem permissão, aparece a tela "Access restricted", com a frase "You don’t have permission to view this page." e o botão "Go back". Esse texto aparece só em inglês.
 
 ## Fluxo principal de ponta a ponta
 
@@ -138,7 +137,7 @@ Contas a pagar (Owner, Administrator e Master) e a configuração de pagamentos 
 - **Painel (Dashboard):** resumo do negócio por período. Há uma versão completa e uma versão simples. Veja o documento "Dashboard".
 - **Relatórios (Reports):** feed de publicações das obras, com filtros e compartilhamento por link. Veja o documento "Reports".
 - **Chat interno:** conversas entre membros da equipe, com grupos e anexos. Veja o documento "Chat interno".
-- **Assistente de IA (Beta):** perguntas em linguagem natural sobre projetos, clientes, faturas e relatórios. Veja o documento "Assistente de IA".
+- **Assistente SmartBuild:** balão no canto inferior direito de todas as telas, que responde dúvidas sobre o uso do sistema. Ele também consulta os dados da empresa conforme as permissões. O item "IA Assistant (Beta)" foi desativado e substituído por este balão.
 - **Conta, planos e acesso:** entrada no sistema, troca de empresa, idioma, planos e assinatura. Veja o documento "Conta, planos e acesso".
 - **Notificações:** sino na barra superior, com aviso de novidades e atualizações de tarefas. Só aparece com a permissão "Notifications".
 
@@ -148,7 +147,7 @@ Contas a pagar (Owner, Administrator e Master) e a configuração de pagamentos 
 - O Dashboard lê dados de orçamentos, projetos, faturas, clientes, funcionários e cartões de ponto.
 - Relatórios lê as publicações feitas nos projetos e permite criar links públicos com vários projetos.
 - O chat e as notificações avisam o usuário em tempo real quando chega mensagem nova.
-- O assistente de IA responde com base nos dados já cadastrados nos módulos.
+- O balão "Assistente SmartBuild" responde com base na base de conhecimento do próprio sistema, não nos dados cadastrados da empresa.
 
 ## Dúvidas frequentes
 

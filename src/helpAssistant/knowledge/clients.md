@@ -25,7 +25,7 @@ A tela "Clients" reúne todos os clientes da sua empresa. Cada cliente pode ter 
 - Dois cards no topo:
   - "Total Clients": quantidade total de clientes da empresa.
   - "New This Month": quantidade de clientes cadastrados no mês corrente.
-- Campo de busca com o placeholder "Search clients...". A busca procura pelo nome e pelo e-mail do cliente.
+- Campo de busca com o placeholder "Search clients...". A busca procura pelo nome, pelo e-mail e pela localização do cliente.
 - Botões no topo da lista:
   - "Merge Clients" (desabilitado quando há menos de 2 clientes na lista).
   - "New Client".
@@ -235,7 +235,7 @@ Atenção: o aviso "WARNING: This action is irreversible!" aparece na janela. An
 **R:** O valor de "Paid" soma apenas faturas marcadas como pagas. Se a fatura não foi marcada como paga e a data de vencimento já passou, ela entra em "Overdue". Confira o status da fatura na tela de faturas.
 
 **P:** Como filtrar os números da página de detalhes por período?
-**R:** Use o campo "Period" no topo da página. As opções vão de "This Month" até "All Period". O padrão é "This Year".
+**R:** Use o campo "Period" no topo da página. As opções são "This Year" (padrão), "This Quarter", "Last 3 Months", "Last Month", "This Month", "Last 30 Days" e "All Period".
 
 **P:** Quem pode ver a tela de Clientes?
 **R:** Usuários com a permissão "Clients". Usuários sem essa permissão não veem o item no menu e não conseguem abrir a lista ou os detalhes de um cliente.

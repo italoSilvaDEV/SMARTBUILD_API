@@ -27,7 +27,6 @@ const PROJECT_FINANCE = ["Projects", "Invoice"];
  * ser classificadas antes de aparecer no assistente.
  */
 const TOOL_ACCESS: Record<string, { permissions: string[]; fullProjectAccess?: boolean }> = {
-  list_projects: { permissions: PROJECTS, fullProjectAccess: true },
   get_project_details: { permissions: PROJECT_FINANCE, fullProjectAccess: true },
   project_status_transitions: { permissions: PROJECTS, fullProjectAccess: true },
   project_schedule_risk: { permissions: PROJECTS, fullProjectAccess: true },
@@ -44,7 +43,6 @@ const TOOL_ACCESS: Record<string, { permissions: string[]; fullProjectAccess?: b
   top_spending_projects: { permissions: PROJECT_FINANCE, fullProjectAccess: true },
   top_profitable_projects: { permissions: PROJECT_FINANCE, fullProjectAccess: true },
   change_order_summary: { permissions: PROJECT_FINANCE, fullProjectAccess: true },
-  list_clients: { permissions: ["Clients"] },
   get_client_details: { permissions: ["Clients", "Invoice"] },
   list_invoices: { permissions: ["Invoice"] },
   financial_period_comparison: { permissions: PROJECT_FINANCE, fullProjectAccess: true },
@@ -52,7 +50,7 @@ const TOOL_ACCESS: Record<string, { permissions: string[]; fullProjectAccess?: b
   // faturas void como em aberto. invoice_summary, overdue_invoices, invoice_aging,
   // receivables_by_client, cashflow_projection e client_risk_analysis foram
   // reescritas em receivables.ts; company_overview está logo abaixo.
-  estimate_summary: { permissions: ["Estimates"] },
+  // list_projects, list_clients e estimate_summary têm versão correta em projectsAndEstimates.ts.
   timecard_summary: { permissions: ["Time Cards"] },
   timecards_by_worker: { permissions: ["Time Cards"] },
   worker_timecard_details: { permissions: ["Time Cards"] },
@@ -67,6 +65,7 @@ const TOOL_ACCESS: Record<string, { permissions: string[]; fullProjectAccess?: b
 };
 
 const PENDING_STATUSES = new Set(["open", "draft", "partial"]);
+const LISTED_TOTAL_TOOLS = new Set(["project_status_transitions", "top_spending_projects", "list_invoices", "change_order_summary"]);
 
 /**
  * Corrige totais de consultas antigas que tratam qualquer status diferente
@@ -100,6 +99,16 @@ function fixLegacyOutput(toolName: string, output: any): unknown {
     // overdueCount/invoicedAmount antigos incluem faturas canceladas; use receivables_by_client.
     const { overdueCount, invoicedAmount, ...financials } = output.financials;
     return { ...output, financials };
+  }
+
+  // Nestas consultas "total" é só quantos itens vieram (limitados), não o total da empresa.
+  if (LISTED_TOTAL_TOOLS.has(toolName) && typeof output.total === "number") {
+    const { total, ...rest } = output;
+    return {
+      listedCount: total,
+      countNote: "listedCount é só a quantidade de itens retornados (limitada), não o total da empresa. Não apresente como total.",
+      ...rest,
+    };
   }
 
   return output;

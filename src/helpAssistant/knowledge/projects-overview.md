@@ -32,7 +32,7 @@ Daqui você consegue:
 
 - Usuários com acesso total a projetos veem **todos** os projetos da empresa.
 - Os demais usuários veem apenas os projetos em que são o **vendedor** ("seller") ou o **gerente de projeto** ("Project Manager").
-- Essa diferença é definida no cadastro do usuário, no campo "Project Visibility", com as opções "All Active Projects" (todos os projetos ativos) e "Only Assigned Projects" (somente os projetos atribuídos ao usuário). Ao cadastrar um usuário do escritório de dono ("Owner"), a opção "All Active Projects" é aplicada automaticamente.
+- Essa diferença é definida no cadastro do usuário, no controle "Control project editing access" (controle de acesso à edição de projetos), com as opções "All" (todos os projetos da empresa) e "Assigned" (somente os projetos atribuídos ao usuário). Ao cadastrar um usuário do escritório de dono ("Owner"), a opção "All" é aplicada automaticamente.
 
 ## O que aparece na tela
 
@@ -111,8 +111,9 @@ Os status exibidos na lista são estes:
 Pontos importantes:
 
 - Os três primeiros (Pre-Start, In Progress e Final walkthrough) são os **projetos ativos** do sistema. "Finished" não entra nessa categoria, mesmo aparecendo no filtro padrão da lista.
-- **Canceled** (Cancelado) aparece em projetos que foram cancelados na integração com QuickBooks. Esse status não está disponível no menu "Change Status" da lista.
-- Projetos antigos ou importados podem ter outros status de orçamento, como "Pending" (Pendente), "Accepted" (Aceito) ou "Denied" (Negado). Eles não aparecem no filtro padrão.
+- **Canceled** (Cancelado) marca projetos inativos na integração com QuickBooks. Esse status não está disponível no menu "Change Status" da lista, e projetos com ele não aparecem nesta lista.
+- Os status de projeto que você vê e escolhe nesta tela são só os quatro acima: "Pre-Start", "In Progress", "Final walkthrough" e "Finished".
+- Internamente, alguns projetos podem ter outros valores vindos de orçamentos ou da integração com QuickBooks, como "Pending", "Accepted" ou "Denied". Eles não são status selecionáveis e esses projetos não aparecem nesta lista.
 
 ### Como mudar o status de um projeto
 
@@ -171,7 +172,7 @@ A janela informa que serão apagados permanentemente: serviços relacionados, cu
 ## Relação com outros módulos
 
 - **Clients (Clientes)**: nome, e-mail e endereço do cliente aparecem na linha do projeto. Alterar o cliente é feito pela página de detalhes.
-- **Estimates (Orçamentos)**: todo projeto nasce de um orçamento aprovado. O valor do projeto é o valor desse orçamento.
+- **Estimates (Orçamentos)**: projetos criados pelo fluxo "New project" nascem de um orçamento aprovado. O valor do projeto é o valor desse orçamento.
 - **Project details (Detalhes do projeto)**: a página de detalhes concentra abas com serviços, tarefas, arquivos, feed, faturas, ordens de alteração e custos.
 - **Time cards e Job Schedule**: as horas trabalhadas alimentam o custo de funcionários exibido na visão financeira.
 - **Subcontractors (Subcontratados)**: o custo de subcontratados vem dos lançamentos feitos na página do projeto.
@@ -187,7 +188,7 @@ A janela informa que serão apagados permanentemente: serviços relacionados, cu
 **R:** Normalmente, o projeto foi marcado como inativo no QuickBooks e foi importado com esse status. Esse status não aparece no menu "Change Status" da lista, então a alteração precisa ser feita na origem.
 
 **P:** Por que um projeto "Finished" aparece na lista e outro não?
-**R:** Por padrão, a lista mostra os status Pre-Start, In Progress, Final walkthrough e Finished. Se o projeto estiver com um status antigo, como "Pending" ou "Denied", ele só aparece quando você marcar esse status no filtro.
+**R:** Por padrão, a lista mostra os status Pre-Start, In Progress, Final walkthrough e Finished. Se o projeto estiver com outro status, como "Pending" ou "Denied", ele não aparece na lista, porque o filtro de status mostra somente os quatro status padrão.
 
 **P:** Posso desfazer uma exclusão de projeto?
 **R:** Não. A exclusão é definitiva e remove também orçamentos, faturas, serviços, custos e horas ligados ao projeto. Confirme antes de excluir.

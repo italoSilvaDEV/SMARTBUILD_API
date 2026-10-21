@@ -45,8 +45,8 @@ Cada orçamento pertence a um projeto. Por isso, a lista mostra apenas os orçam
 
 ### Tabela
 
-- Colunas: número do orçamento, cliente, valor, status e uma coluna de ações (ícone de três pontos).
-- As colunas Number (número), Client (cliente), Price (valor) e Status (status) podem ser ordenadas ao clicar no cabeçalho.
+- Colunas: número do orçamento (com a data de criação abaixo), "Client/Address" (cliente e endereço), valor ("Price"), vendedor (oculta em telas pequenas), status e uma coluna de ações (ícone de três pontos).
+- As colunas Number (número), Client/Address (cliente e endereço), Price (valor) e Status (status) podem ser ordenadas ao clicar no cabeçalho.
 - Em cada linha aparecem o número do orçamento, o nome do cliente, o local do projeto (ou o texto de endereço não informado, quando o local não existe), o valor e o badge de status.
 - O valor exibido é o valor final do orçamento. Quando há desconto, o valor já sai com o desconto aplicado.
 - Se nenhum orçamento combinar com os filtros, a tabela mostra uma mensagem de resultado vazio com um atalho para criar um novo orçamento.
@@ -121,9 +121,9 @@ Os status de um orçamento são estes:
 
 - **Pending (Pendente)**: orçamento criado e ainda sem resposta do cliente. É o status inicial de todo orçamento novo.
 - **Approved (Aprovado)**: o orçamento foi aceito. Isso acontece quando o cliente aceita e assina pelo link, quando o vendedor faz uma aprovação manual, ou quando o orçamento é convertido em projeto.
-  - Atenção: ao converter um orçamento pendente em projeto, ele passa a "Approved", mas continua exigindo a assinatura do cliente. Nesse caso a tabela mostra o aviso "Pending Client Signature" (em português, "assinatura do cliente pendente"), e o cliente ainda pode aceitar e assinar pelo link.
+  - Atenção: ao converter um orçamento pendente em projeto, ele passa a "Approved", mas continua exigindo a assinatura do cliente. Nesse caso, a linha do orçamento na aba "Estimate" do projeto mostra o aviso "Pending Client Signature" (em português, "assinatura do cliente pendente"), e o cliente ainda pode aceitar e assinar pelo link.
 - **Rejected (Rejeitado)**: o cliente recusou o orçamento pelo link de resposta.
-- **Canceled (Cancelado)**: o orçamento foi cancelado pelo vendedor. O cancelamento pode ter um motivo opcional.
+- **Canceled (Cancelado)**: o orçamento foi cancelado pelo vendedor.
 
 Transições principais:
 
@@ -178,4 +178,4 @@ Transições principais:
 **R:** Orçamentos cancelados não podem ser convertidos em projeto. Restaure o orçamento para Pendente antes, se precisar converter.
 
 **P:** Converti o orçamento e ele ainda aparece como pendente de assinatura. Está certo?
-**R:** Sim. A conversão marca o orçamento como Aprovado, mas ele continua exigindo a assinatura do cliente. A tabela mostra "Pending Client Signature" até a assinatura ser feita ou aplicada manualmente.
+**R:** Sim. A conversão marca o orçamento como Aprovado, mas ele continua exigindo a assinatura do cliente. Na aba "Estimate" do projeto, a linha mostra "Pending Client Signature" até o cliente assinar pelo link ou até ser feita a aprovação manual.

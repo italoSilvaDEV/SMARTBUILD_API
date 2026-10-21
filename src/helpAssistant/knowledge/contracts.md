@@ -197,7 +197,7 @@ Fluxo típico: Draft → Sent → Viewed → Signed. O contrato também pode ir 
 
 - A data de validade é calculada somando os "Expiration days" à data de criação do contrato.
 - Ao editar um contrato, a validade é recalculada a partir da data de criação. Se a nova data ainda estiver no passado, o contrato continua expirado.
-- Um contrato expirado não pode ser enviado: "This contract cannot be sent". Para voltar a enviá-lo, edite o contrato e aumente os dias de validade, de forma que a nova data fique no futuro. Ao editar um contrato expirado, o status volta para Draft.
+- Um contrato expirado não pode ser enviado: "This contract cannot be sent". Para voltar a enviá-lo, edite o contrato e aumente os dias de validade, de forma que a nova data fique no futuro. O status "Expired" é calculado pela data de validade; ele não é escolhido pelo usuário.
 - O link do cliente não aceita assinatura depois da validade: "Contract link has expired".
 
 ### Quem pode o quê
@@ -217,7 +217,7 @@ Fluxo típico: Draft → Sent → Viewed → Signed. O contrato também pode ir 
 
 ### Assinatura
 
-- O cliente precisa digitar ou desenhar a assinatura. Sem assinatura, aparece "Signature is required".
+- O cliente precisa digitar o nome para criar a assinatura. Sem assinatura, aparece "Signature is required".
 - Ao assinar, o contrato fica como "Signed", a data da assinatura é registrada e o PDF final é gerado com as assinaturas.
 - No fluxo de assinatura analisado, não há envio automático de e-mail no momento da assinatura. A empresa acompanha o resultado pela lista e pela linha do tempo.
 

@@ -8,7 +8,7 @@ routes: [/users, /user/:id]
 
 ## Para que serve
 
-A tela "User Management" é onde você gerencia os funcionários da sua empresa: cadastra novos usuários, edita seus dados de trabalho (cargo, valor por hora ou por dia, local, visibilidade de projetos), reenvia senha, desativa ou exclui usuários. Também é onde você define os cargos ("Offices" ou "Positions"), que determinam as permissões de acesso de cada funcionário ao sistema, e onde controla a quantidade de usuários extras do plano.
+A tela "User Management" é onde você gerencia os funcionários da sua empresa: cadastra novos usuários, edita seus dados de trabalho (cargo, valor por hora ou por dia, local, visibilidade de projetos), reenvia senha, desativa ou exclui usuários. Também é onde você define os cargos (aba "Positions"), que determinam as permissões de acesso de cada funcionário ao sistema, e onde controla a quantidade de usuários extras do plano.
 
 ## Onde encontrar
 
@@ -27,8 +27,8 @@ A tela "User Management" é onde você gerencia os funcionários da sua empresa:
   - "Active Employees" (funcionários ativos).
   - "Inactive Employees" (funcionários desativados).
   - "Extra Employees" (usuários extras pagos, com um contador ao lado do nome quando há algum).
-  - "Offices" (cargos, que aparecem como "Positions" na interface).
-- Campo de busca "Search Users" (na aba de usuários) e "Search Offices" (na aba de cargos).
+  - "Positions" (cargos).
+- Campo de busca "Search users" (na aba de usuários) e "Search positions" (na aba "Positions").
 - Botões conforme a aba:
   - Em funcionários: "Add Extra Users", "New User".
   - Em usuários extras: "Reduce Extras".
@@ -45,12 +45,12 @@ A tela "User Management" é onde você gerencia os funcionários da sua empresa:
 - No menu da linha, "Edit User / Time Card" abre a edição, e "Delete User" aparece somente para usuários que não têm cargo de administrador.
 - Quando não há resultados: "No employees found.".
 
-### Lista de cargos ("Offices")
+### Lista de cargos (aba "Positions")
 
-- Mostra cada cargo com a quantidade de permissões selecionadas, por exemplo "3 permissions".
+- Mostra cada cargo com a quantidade de permissões selecionadas, por exemplo "3 permission(s)".
 - Ao abrir um cargo, aparece a janela "Edit Position".
 - Quando um cargo não tem permissões configuradas: "No permissions are configured for this position.".
-- Quando não há cargos: "No offices found.".
+- Quando não há cargos: "No positions found.".
 
 ### Janela de cadastro de usuário ("Add User" / "Edit User")
 
@@ -64,7 +64,9 @@ Campos principais:
 - **Location (City, State)** ("City and State are required").
 - **Photo** (JPG, PNG ou GIF; recomendado 400x400 px), com o botão "Update photo".
 - **Payment Type**: "Hourly" (com "Hourly Rate") ou "Daily" (com "Daily Rate").
-- **Break Mode** (política de intervalo): "Automatic Break" (o tempo de intervalo é descontado automaticamente dos cartões de ponto) ou "Manual Break" (o funcionário inicia e encerra o intervalo pelo aplicativo).
+- **"Break Mode"** (modo de intervalo): "Automatic Break" (o tempo de intervalo é descontado automaticamente dos cartões de ponto concluídos) ou "Manual Break" (o funcionário inicia e encerra as pausas pelo aplicativo).
+- **Política de intervalo**: pode seguir a política da empresa ou uma política específica do funcionário.
+- **"Over Time"**: liga ou desliga a hora extra do funcionário. Com a opção ligada, as horas acima de 40 na semana viram hora extra paga a 1,5x. Com a opção desligada, a coluna de horas extras em Time Cards mostra "Not overtime" e os registros de ponto feitos nesse período são pagos pelo valor normal. A opção vale para os registros feitos depois de ligada.
 - **Project Visibility** ("Select visibility"): "All Active Projects" (vê todos os projetos ativos) ou "Only Assigned Projects" (vê apenas os projetos atribuídos a ele).
 - **Password Configuration**: "Auto" (uma senha é gerada e enviada por e-mail ao usuário) ou "Manual" (você define a senha; mínimo de 6 caracteres; "Confirm Password" deve ser igual).
 - Permissões de edição específicas: "Control project editing access", "Control estimate editing access" e "Control invoice editing access" (com os rótulos "Project Access", "Estimate Access" e "Invoice Access").
@@ -75,7 +77,7 @@ Campos principais:
 - Nome, e-mail, telefone, cargo, local e valor por hora ou por dia.
 - Status: "Active" ou "Inactive".
 - Botões "Edit User" e "Resend Password".
-- Lista de tarefas atribuídas ("Tasks", com "No tasks") e serviços vinculados ("Linked services", "No linked services").
+- Lista de tarefas atribuídas ("Tasks", com "No tasks") e a aba "Linked Services" com os serviços de projeto vinculados (sem vínculos, aparece "No services linked to this user.").
 
 ### Janela de cargo ("Edit Position")
 
@@ -183,7 +185,7 @@ Cargo: um cargo pode ser editado (permissões), ou excluído se não tiver usuá
 
 ### Como criar ou editar um cargo
 
-1. Na aba "Offices", clique em "New Office".
+1. Na aba "Positions", clique em "New Position".
 2. Informe o nome do cargo ("Position Name") e marque as permissões em "Select Permissions". Use "Grant All Permissions" para marcar tudo.
 3. Clique em "Save Position".
 

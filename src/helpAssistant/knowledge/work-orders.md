@@ -52,7 +52,7 @@ Os campos e seções são:
 
 - **Project / Location** ("Project / Location *"): escolha do projeto, com busca "Search number, client, or location...". Mostra o número e o endereço do projeto.
 - **Assignment & Contact** ("Assigned to *"): escolha do responsável, que pode ser um funcionário ("Employee") ou um subcontratado ("Subcontractor"). Busca "Search employee or subcontractor...". Há o botão "New subcontractor" para cadastrar um subcontratado sem sair da ordem.
-- **Work Order Details** ("Job title", "Scope of work"): título do trabalho e descrição do escopo.
+- **Work Order Details** ("Title *", "Scope of work"): título do trabalho (obrigatório) e descrição do escopo. No PDF, o título aparece como "Job title".
 - **Schedule & Management** ("Start Date *", "End Date *", "Project managers"): datas de início e término e gerentes de projeto ("Select project managers...", até 20). Há o aviso "Select a project first" se ainda não houver projeto.
 - **Line Items** ("Services & Items", "Service / Item", "Qty", "Unit price"): lista de serviços ou itens. Use "Add new line" para incluir linhas (preencha e pressione Enter para salvar a linha).
 - **Image Attachments** ("Anexos de imagem"): até 10 imagens.
@@ -61,7 +61,7 @@ Os campos e seções são:
   - "Show service prices in PDF": desligue para ocultar preços unitários, valores e totais do PDF.
   - "Show client name to recipient": desligue para retirar o nome do cliente do PDF, do e-mail e da página de revisão.
 - **Signatures** ("Signatures"): "Company Signature" (aplicada automaticamente a partir do perfil da empresa) e a assinatura do responsável ("Subcontractor Signature" ou "Employee Signature"), que é colhida pelo link seguro.
-- Botões no rodapé: "Generate PDF" (gera e mostra o PDF), "Save" (salva sem enviar), "Create & Send" (ao criar) ou "Update & Send" (ao editar). Use "Download PDF" para baixar o arquivo.
+- Botões no rodapé: "Generate PDF" (gera e mostra o PDF), "Create" (cria sem enviar; ao editar, o botão se chama "Update") e "Create & Send" (cria e envia; ao editar, "Update & Send"). Use "Download PDF" para baixar o arquivo.
 
 ### Página de assinatura do responsável
 
@@ -136,12 +136,12 @@ Eventos de histórico (linha do tempo): criação, envio por e-mail (com o resul
 
 1. Clique em "Work Orders" no menu e depois em "New Work Order".
 2. Em "Project / Location", escolha o projeto.
-3. Em "Assigned to", escolha o funcionário ou o subcontratado responsável. Se ele não estiver cadastrado, use "Create new subcontractor".
-4. Preencha "Job title" e "Scope of work".
+3. Em "Assigned to", escolha o funcionário ou o subcontratado responsável. Se ele não estiver cadastrado, use o botão "New subcontractor".
+4. Preencha "Title *" e "Scope of work".
 5. Defina "Start Date" e "End Date". Escolha os gerentes de projeto, se quiser.
 6. Em "Line Items", adicione os serviços ou itens, com quantidade e preço unitário.
 7. Revise os termos, as opções de exibição do PDF e as imagens, se houver.
-8. Clique em "Save" para guardar sem enviar, ou em "Create & Send" para criar e enviar por e-mail.
+8. Clique em "Create" para guardar sem enviar, ou em "Create & Send" para criar e enviar por e-mail.
 
 ### Como enviar uma ordem por e-mail
 
@@ -152,7 +152,7 @@ Eventos de histórico (linha do tempo): criação, envio por e-mail (com o resul
 ### Como editar uma ordem
 
 1. Na lista, abra o menu de ações da linha e escolha "Edit".
-2. Altere os dados e clique em "Update & Send" (ou "Save").
+2. Altere os dados e clique em "Update" (salva sem enviar) ou "Update & Send".
 3. Lembre-se: a ordem volta para "Pending" e precisa ser reenviada para ser assinada.
 
 ### Como acompanhar a assinatura
@@ -179,7 +179,7 @@ Eventos de histórico (linha do tempo): criação, envio por e-mail (com o resul
 
 ### Como ajustar os termos padrão
 
-Os termos padrão da empresa são configurados na área de termos de contrato da empresa. Ao criar uma ordem, esses termos já vêm preenchidos, e podem ser alterados apenas naquela ordem.
+Os termos padrão da empresa são configurados na tela "Settings" (grupo "Management"), na seção de termos de contrato. Ao criar uma ordem, esses termos já vêm preenchidos, e podem ser alterados apenas naquela ordem.
 
 ## Relação com outros módulos
 

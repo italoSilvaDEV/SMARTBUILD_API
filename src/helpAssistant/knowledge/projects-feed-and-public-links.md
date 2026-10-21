@@ -136,7 +136,7 @@ Depois de desativado, o cliente não consegue mais abrir a página. Para liberar
 ## Status e ciclo de vida
 
 - **Publicação**: fica visível no feed até ser excluída pelo autor (ou por Administrator/Owner).
-- **Link público**: começa "Active" (Ativo). Fica "Inactive" (Inativo) quando é desativado manualmente ou quando passa da data de validade.
+- **Link público**: começa "Active" (Ativo). Fica "Inactive" (Inativo) quando é desativado manualmente. Depois da data de validade, a página pública deixa de abrir, mas o link continua exibido como "Active".
 - **Validade**: o link criado pelo botão "Share Link" vale por 30 dias. Depois disso, a página pública mostra a mensagem de link inválido.
 - **Acessos**: cada vez que a página pública é aberta, o contador de acessos aumenta e a data do último acesso é atualizada.
 
@@ -170,7 +170,7 @@ Depois de desativado, o cliente não consegue mais abrir a página. Para liberar
 **R:** Não. As fotos aceitas são JPEG, PNG e WEBP.
 
 **P:** O cliente disse que não consegue abrir o link. O que houve?
-**R:** Provavelmente o link foi desativado ou passou da validade de 30 dias. Clique em "Share Link" para gerar um novo e envie o endereço atualizado.
+**R:** Provavelmente o link foi desativado. Nesse caso, clique em "Share Link" para gerar um novo e envie o endereço atualizado. Se o link passou da validade de 30 dias, "Share Link" mostra o mesmo endereço, que continua sem abrir.
 
 **P:** Como o cliente sabe que há novidades?
 **R:** Ele precisa abrir o link. A página pública mostra as atualizações mais recentes e tem o botão de atualizar. Você pode reenviar o link por e-mail, se quiser.

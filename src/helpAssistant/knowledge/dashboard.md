@@ -12,7 +12,7 @@ O "Dashboard" é a tela inicial do SmartBuild. Ela mostra um resumo do negócio 
 
 Existem duas versões da mesma tela:
 
-- **Painel completo:** para quem tem a permissão "Dashboard". Mostra oito indicadores, cinco gráficos de projetos, orçamentos, despesas, faturas, fluxo de caixa e vendas.
+- **Painel completo:** para quem tem a permissão "Dashboard". Mostra oito indicadores e seis gráficos: projetos, orçamentos, despesas, faturas, fluxo de caixa e vendas.
 - **Painel simplificado:** para quem tem a permissão "Dashboard Simple". Mostra quatro indicadores focados em orçamentos e os gráficos de orçamentos e faturas.
 
 Se o usuário tiver as duas permissões, vê sempre o painel completo.
@@ -72,7 +72,7 @@ Cada cartão mostra um número e pode ser clicado:
 **Estados da tela**
 
 - Enquanto os dados carregam, aparece uma tela de espera com formas cinzas.
-- Se a busca falhar, aparece o título "Error loading dashboard data" (Erro ao carregar os dados do painel), com a mensagem do erro e um botão de sair. Esse botão aparece com o rótulo "logout" no texto atual, porque a chave de tradução não está cadastrada.
+- Se a busca falhar, aparece o título "Error loading dashboard data" (Erro ao carregar os dados do painel), com a mensagem do erro e um botão de sair (rótulo "Logout" em inglês).
 - Se a empresa usa o modo multiempresa e nenhuma empresa está selecionada, aparece a mensagem "Company ID is required when multi-company mode is enabled" (O ID da empresa é obrigatório quando o modo multiempresa está ativo). Para resolver, troque de empresa pelo menu do usuário.
 
 ## Como fazer
@@ -123,7 +123,6 @@ Os números do painel são calculados a partir dos status dos registros:
   - "Employee cost": soma do custo de mão de obra dos funcionários, calculado a partir das horas trabalhadas e do valor por hora ou valor fixo;
   - "Subcontractor cost": soma do custo das horas e valores de subcontratados nos projetos.
 - **Faturas (Invoices Overview):** considera todas as faturas da empresa criadas no período escolhido no próprio gráfico.
-- **Atualização:** os números ficam guardados por cerca de 5 minutos. Se você acabou de lançar algo e não aparece no painel, espere alguns minutos ou troque o período para forçar a atualização.
 
 ## Relação com outros módulos
 
@@ -154,9 +153,6 @@ Os números do painel são calculados a partir dos status dos registros:
 
 **P:** Meu painel é diferente do painel de um colega. Por quê?
 **R:** A versão do painel depende da permissão do usuário. Quem tem "Dashboard" vê o painel completo. Quem tem só "Dashboard Simple" vê a versão simplificada. Para mudar, peça ao Owner ou ao Administrator.
-
-**P:** Eu troquei um lançamento de custo e o painel não mudou na hora. É erro?
-**R:** Não necessariamente. Os números ficam guardados por cerca de 5 minutos. Espere e recarregue a página, ou troque o período para atualizar.
 
 **P:** O painel mostra "Error loading dashboard data". O que faço?
 **R:** Recarregue a página. Se o erro continuar, saia e entre de novo. Se o problema persistir, entre em contato com o suporte e informe a mensagem exibida na tela.

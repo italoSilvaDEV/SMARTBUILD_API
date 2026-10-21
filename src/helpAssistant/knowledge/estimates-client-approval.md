@@ -13,7 +13,7 @@ Esta base explica o caminho de um orçamento depois de criado: como ele é envia
 ## Onde encontrar
 
 - **Envio**: na lista de orçamentos (menu "Estimates"), abra o menu de três pontos da linha e escolha "Send By Email" (em português, "Enviar por e-mail"). Também é possível enviar logo depois de criar, pelo botão "Create & Send" na tela de resumo do orçamento.
-- **Aprovação manual e remoção de assinatura**: também no menu de três pontos da linha da lista, e na aba "Estimate" do detalhe do projeto.
+- **Aprovação manual e remoção de assinatura**: somente na aba "Estimate" do detalhe do projeto. O menu de três pontos da lista não tem essas opções.
 - **Página do cliente**: o cliente não usa o sistema. Ele recebe um link por e-mail e abre a página de resposta do orçamento, sem precisar fazer login.
 - Quem pode enviar e aprovar: usuários com a permissão **"Estimates"**.
 
@@ -26,11 +26,10 @@ Esta base explica o caminho de um orçamento depois de criado: como ele é envia
 - Campo **"Email Body"** (corpo do e-mail): texto personalizado, com o placeholder "Enter your custom message here...". Ele aparece no centro do e-mail.
 - Seção **"Attachments"** (anexos):
   - "Automatic Attachment": o PDF do orçamento, que vai anexado automaticamente.
-  - Área "Click to upload" para anexar arquivos extras, com a indicação "Most file types allowed". É possível anexar até 10 arquivos extras.
+  - Área "Click to upload" para anexar arquivos extras, com a indicação "Most file types allowed". Os anexos extras somam no máximo 20 MB; acima disso o sistema pede para remover ou compactar arquivos.
 - Pré-visualização do e-mail, nas versões "Email Desktop Preview" e "Email Mobile Preview".
 - Botões "Back to Edit" (voltar para editar) e "Send" (enviar). Durante o envio, o botão mostra "Sending...".
-- Mensagens de erro: "Client email address is required." (e-mail do cliente obrigatório) e "Invalid client email address." (e-mail inválido).
-- Ao enviar com sucesso, aparece "Email sent successfully!".
+- Mensagens de erro: "At least one recipient is required" (nenhum destinatário informado) e "Please enter valid email addresses" (endereço inválido).
 
 ### Página do cliente (link do e-mail)
 
@@ -68,11 +67,11 @@ Esta base explica o caminho de um orçamento depois de criado: como ele é envia
 ### Como enviar um orçamento por e-mail
 
 1. Na lista de orçamentos, abra o menu de três pontos da linha do orçamento.
-2. Escolha "Send By Email". A opção não aparece para orçamentos cancelados.
+2. Escolha "Send By Email". Para orçamentos cancelados, a opção aparece desabilitada.
 3. Confira o campo "To". O e-mail do cliente já vem preenchido. Acrescente outros destinatários se quiser.
 4. Marque "Send me a copy" se quiser receber uma cópia.
 5. Escreva o texto no campo "Email Body", se quiser personalizar a mensagem.
-6. Se precisar, anexe arquivos extras, até 10.
+6. Se precisar, anexe arquivos extras (até 20 MB no total).
 7. Confira a pré-visualização e clique em "Send".
 
 ### Como reenviar um orçamento já enviado
@@ -100,7 +99,7 @@ Esta base explica o caminho de um orçamento depois de criado: como ele é envia
 
 ### Como fazer uma aprovação manual
 
-1. Na lista, abra o menu de três pontos do orçamento, ou na aba "Estimate" do projeto, abra as ações do orçamento.
+1. Na aba "Estimate" do projeto, abra as ações do orçamento.
 2. Escolha "Manual Approval".
 3. Opcionalmente, digite o nome do cliente no campo "Client name (optional)". Esse nome aparece na assinatura do PDF.
 4. Clique em "Apply manual approval" (aplicar aprovação manual).
@@ -153,7 +152,6 @@ Esta opção aparece apenas para orçamentos aprovados que não estão aguardand
 - **Orçamentos (lista)**: onde ficam as ações de envio, aprovação manual, remoção de assinatura, cancelamento e conversão.
 - **Projetos**: a aprovação do orçamento muda o status do projeto para aceito. A aprovação manual cria os serviços no projeto.
 - **Faturas**: depois de aprovado, o orçamento pode ser convertido em fatura.
-- **Contratos**: o orçamento pode ser usado como base para o contrato do projeto.
 - **Clientes**: o e-mail do cliente é o destinatário padrão do envio e o destinatário da confirmação de aprovação.
 - **Configurações da empresa**: o nome, o logotipo, o telefone e o e-mail da empresa aparecem na página do cliente e nos e-mails.
 
@@ -163,7 +161,7 @@ Esta opção aparece apenas para orçamentos aprovados que não estão aguardand
 **R:** Abra o orçamento na lista, escolha "Send By Email" no menu de três pontos e clique em "Send". O e-mail é enviado novamente com o PDF atual.
 
 **P:** O cliente diz que o link não funciona, aparece "Estimate Not Found". O que fazer?
-**R:** Confira se o link foi copiado por inteiro e se o orçamento não foi cancelado ou excluído. Se necessário, reenvie o orçamento pela opção "Send By Email".
+**R:** Confira se o link foi copiado por inteiro e se o orçamento não foi excluído. Se necessário, reenvie o orçamento pela opção "Send By Email".
 
 **P:** O cliente tentou assinar e apareceu "Please provide a clearer signature before confirming.". Por quê?
 **R:** A assinatura está pouco legível ou muito pequena. Ele deve limpar a área e assinar de novo, com traço mais firme. Se o problema continuar, pode atualizar a página ou usar outro navegador.

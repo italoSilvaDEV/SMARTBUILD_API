@@ -15,7 +15,7 @@ O mesmo conjunto de agendamentos também aparece na tela "Job Dispatch" (despach
 ## Onde encontrar
 
 - Menu lateral: grupo "Schedule", item "Job Schedule".
-- Também existe um item "Agenda" > "Seller Schedule" em outro menu de navegação do sistema, que abre a mesma tela.
+- Também existe um item "Agenda" > "Seller Schedule" em outro menu de navegação do sistema, que abre a mesma tela. Esse caminho não verifica a permissão "Job Schedule".
 - Quem vê: usuários que têm a permissão **"Job Schedule"**. Sem essa permissão, a tela não aparece no menu e a página exibe a mensagem de acesso negado do sistema.
 
 ## O que aparece na tela
@@ -42,7 +42,7 @@ O mesmo conjunto de agendamentos também aparece na tela "Job Dispatch" (despach
    - "Recipient Emails" (destinatários), campo marcado como obrigatório para o envio de e-mail.
    - "Notes to customer (Optional)" (em português: "Notas para o cliente (opcional)"), uma observação que vai no e-mail.
    - "Attachments (Max 25MB)" (em português: "Anexos (máximo 25MB)"), arquivos que acompanham o e-mail. Se o total passar de 25 MB, o sistema mostra "Total file size exceeds 25MB limit" (em português: o tamanho total dos arquivos excede o limite de 25 MB).
-5. Para ver como o e-mail vai ficar, clique em "Preview" (em português: "Prévia"). Abre-se o "Email Preview" (em português: "Prévia do e-mail"), que pode ser fechado com "Close Preview".
+5. Em celular, para ver como o e-mail vai ficar, clique em "Preview" (em português: "Prévia"). Abre-se o "Email Preview" (em português: "Prévia do e-mail"), que pode ser fechado com "Close Preview". Em telas maiores, a prévia aparece ao lado do formulário.
 6. Escolha uma das opções para salvar:
    - "Save" (em português: "Salvar"): cria o agendamento sem enviar e-mail.
    - "Save and Send" (em português: "Salvar e enviar"): cria o agendamento e envia o e-mail de notificação.
@@ -52,11 +52,12 @@ Ao concluir, aparece a mensagem "Project scheduled successfully!" (em português
 
 ### Como editar um agendamento
 
-1. Clique em "Edit" no cartão do trabalho.
-2. Na tela de edição, a seção "Service Details" (em português: "Detalhes do serviço") permite ajustar a categoria, o nome do serviço e a descrição do escopo. Há o botão "Enhance with AI" (em português: "Aprimorar com IA") para reescrever a descrição do escopo a partir do texto digitado.
-3. A seção "Team & Schedule" (em português: "Equipe e agenda") permite escolher os responsáveis entre "Workers" (em português: "Funcionários") e "Subcontractors" (em português: "Subcontratados"), ajustar a data de início e o prazo (cada um pode ter um horário opcional, que vem desativado por padrão) e incluir "Notes to Team" (em português: "Notas para a equipe").
-4. Marque "Notify Client" (em português: "Notificar cliente") se quiser que o cliente receba um e-mail com a alteração.
-5. Salve. O sistema informa "Schedule updated successfully!" (em português: "Agendamento atualizado com sucesso!"). Se a notificação também for enviada, a mensagem é "Schedule updated and notification email sent!".
+1. Clique em "Edit" (em português: "Editar") no cartão do trabalho. Abre-se a janela de edição do agendamento do projeto.
+2. Ajuste "Start Date" (em português: "Data de início") e "Deadline" (em português: "Prazo"), que são obrigatórios. Nessa janela também é possível alterar "Recipient Emails" (destinatários), "Notes to customer (Optional)" (em português: "Notas para o cliente (opcional)") e os anexos.
+3. Escolha "Save" (em português: "Salvar"), que grava sem enviar e-mail, ou "Save and Send" (em português: "Salvar e enviar"), que grava e envia o e-mail de atualização. Os dois botões só ficam habilitados quando há alguma alteração.
+4. Ao salvar, o sistema informa "Project schedule updated successfully!" (em português: "Agenda do projeto atualizada com sucesso!").
+
+A escolha de equipe (funcionários e subcontratados), o aprimoramento de descrição com IA e a opção "Notify Client" não aparecem nessa janela. Eles ficam na edição do serviço, usada no despacho e na aba de agenda do projeto.
 
 ### Como enviar um lembrete
 
@@ -70,10 +71,10 @@ O sistema informa "Reminder emails sent successfully!" (em português: "E-mails 
 ### Como excluir um agendamento
 
 1. Clique em "Delete" (em português: "Excluir") no cartão do trabalho.
-2. Confirme na janela de confirmação. O texto da confirmação é "Are you sure you want to delete this schedule? This action cannot be undone." (em português: tem certeza de que deseja excluir este agendamento? Esta ação não pode ser desfeita).
-3. O sistema informa "Schedule deleted successfully!" (em português: "Agendamento excluído com sucesso!").
+2. Confirme na janela de confirmação. O texto da confirmação é "Are you sure you want to delete this project schedule?" (em português: tem certeza de que deseja excluir a agenda deste projeto?).
+3. O sistema informa "Project schedule deleted successfully!" (em português: "Agenda do projeto excluída com sucesso!").
 
-Excluir o agendamento não exclui o projeto nem o serviço. Ele apenas remove as datas de início e prazo, e o serviço volta a aparecer como sem data (veja a seção de regras de negócio).
+Excluir a agenda remove apenas as datas de início e prazo do projeto. O projeto e os serviços continuam cadastrados (veja a seção de regras de negócio).
 
 ### Como marcar um trabalho como concluído
 
@@ -89,14 +90,14 @@ Um trabalho na agenda pode estar em um destes estados. Eles não são um campo c
 
 ## Regras de negócio
 
-- **Datas obrigatórias:** para criar um agendamento é preciso escolher o projeto, a data de início e o prazo. Os botões "Next", "Save" e "Save and Send" só ficam habilitados com essas informações.
+- **Datas obrigatórias:** para criar um agendamento é preciso escolher o projeto, a data de início e o prazo. O botão "Next" só fica habilitado com o projeto escolhido. Os botões "Save" e "Save and Send" só ficam habilitados com a data de início e o prazo.
 - **Prazo não pode ser antes do início:** o calendário bloqueia datas anteriores à data de início.
 - **Salvar sem enviar:** "Save" cria o agendamento e não envia nenhum e-mail.
 - **Salvar e enviar:** "Save and Send" cria o agendamento e envia o e-mail de notificação. Os destinatários são os e-mails digitados, separados por vírgula. Se o campo de destinatários ficar vazio, o e-mail é enviado para o e-mail do cliente cadastrado no projeto.
 - **Anexos:** o total dos arquivos anexados é limitado a 25 MB.
 - **Lembrete:** exige pelo menos um e-mail válido. Se nenhum destinatário for informado, o sistema retorna "Recipient emails (to) are required" (os e-mails dos destinatários são obrigatórios).
-- **Excluir agendamento:** remove a data de início e o prazo do serviço e desmarca a conclusão. Em seguida, o sistema envia notificações sobre a remoção.
-- **Marcar como concluído:** registra o serviço como concluído. Se o cliente tiver nome e e-mail cadastrados, o cliente recebe um e-mail avisando da conclusão.
+- **Excluir agendamento:** remove a data de início e o prazo do projeto. A ação não envia e-mails.
+- **Marcar como concluído:** registra o serviço como concluído. A ação não envia e-mail.
 - **Busca:** filtra os trabalhos pelo nome, cliente, local e número do contrato, sem diferenciar maiúsculas de minúsculas.
 
 ## Relação com outros módulos
@@ -105,7 +106,7 @@ Um trabalho na agenda pode estar em um destes estados. Eles não são um campo c
 - **Job Dispatch (Despacho):** mostra os mesmos agendamentos em visões de dia, semana e mês. Serviços sem data aparecem no painel de não atribuídos do despacho, com o botão "Dispatch Now" (em português: "Despachar agora").
 - **Subcontractors (Subcontratados):** podem ser escolhidos como responsáveis na edição do agendamento e recebem os e-mails de atribuição.
 - **Time Cards (Ponto):** as horas dos funcionários são registradas no ponto no dia em que trabalharam, independentemente da agenda.
-- **Clients (Clientes):** o e-mail e o nome do cliente cadastrados são usados quando nenhum destinatário é informado e para o aviso de conclusão.
+- **Clients (Clientes):** o e-mail e o nome do cliente cadastrados são usados quando nenhum destinatário é informado no envio do agendamento.
 
 ## Dúvidas frequentes
 
@@ -119,10 +120,10 @@ Um trabalho na agenda pode estar em um destes estados. Eles não são um campo c
 **R:** Sim, em "Attachments (Max 25MB)". O limite é de 25 MB somados todos os arquivos.
 
 **P:** Como mudo a data de um trabalho que já está agendado?
-**R:** Clique em "Edit" no cartão do trabalho, ajuste as datas na seção de equipe e agenda e salve. Marque "Notify Client" se quiser avisar o cliente.
+**R:** Clique em "Edit" no cartão do trabalho, ajuste as datas e salve. Para avisar por e-mail, use "Save and Send" e informe os destinatários.
 
 **P:** O que acontece se eu excluir um agendamento?
-**R:** As datas de início e prazo do serviço são removidas e ele volta a ficar sem data. O projeto e o serviço continuam cadastrados. A exclusão não pode ser desfeita, por isso o sistema pede confirmação.
+**R:** As datas de início e prazo do projeto são removidas. O projeto e os serviços continuam cadastrados. O sistema pede confirmação antes de excluir.
 
 **P:** Por que um trabalho aparece riscado?
 **R:** Ele foi marcado como concluído. A marcação é feita na página de detalhes do projeto, na aba de agenda.

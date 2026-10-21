@@ -18,7 +18,7 @@ Os dois caminhos terminam na mesma tela de resumo, onde você revisa o PDF, conf
 ## Onde encontrar
 
 - Na tela de Orçamentos (menu "Estimates"), clique no botão "New estimate" (em português, "Novo orçamento").
-- Também é possível criar um orçamento a partir da aba "Estimate" dentro do detalhe de um projeto. Lá, o botão "New estimate" abre uma escolha entre construção manual e com IA.
+- Também é possível criar um orçamento a partir da aba "Estimate" dentro do detalhe de um projeto. Lá, o botão "New Estimate" abre uma escolha entre construção manual e com IA.
 - Quem pode criar: é preciso ter a permissão **"Estimates"**. Sem ela, as telas de criação não abrem.
 
 ## O que aparece na tela
@@ -130,7 +130,7 @@ Os dois caminhos terminam na mesma tela de resumo, onde você revisa o PDF, conf
 
 ### Como criar um orçamento a partir de um projeto
 
-1. Na aba "Estimate" do projeto, clique em "New estimate".
+1. Na aba "Estimate" do projeto, clique em "New Estimate".
 2. Escolha entre construção manual e com IA, na janela de escolha.
 3. A partir daqui o caminho é o mesmo dos passos acima, com o cliente e o projeto já definidos.
 

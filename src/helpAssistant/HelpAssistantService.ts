@@ -1,3 +1,4 @@
+import { detectLanguage } from "./language";
 import { openai } from "./openaiClient";
 import { buildSystemPrompt } from "./prompts";
 import { getActiveSkills, isToolAllowed } from "./skills";
@@ -37,6 +38,63 @@ function extractText(response: any): string {
     .trim();
 }
 
+/** Grupo correto de cada item do menu lateral. */
+const MENU_GROUP: Record<string, string> = {
+  Dashboard: "Platform",
+  Reports: "Platform",
+  "Job Schedule": "Schedule",
+  "Job Dispatch": "Schedule",
+  Projects: "Workflow",
+  Clients: "Workflow",
+  Subcontractors: "Workflow",
+  "Work Orders": "Workflow",
+  Activities: "Workflow",
+  Estimates: "Financials",
+  "Bid Requests": "Financials",
+  Contracts: "Financials",
+  Invoice: "Financials",
+  "Accounts Payable": "Financials",
+  "Time Cards": "Financials",
+  Catalog: "Management",
+  Services: "Management",
+  "User Management": "Management",
+  Settings: "Management",
+};
+const MENU_ITEMS = Object.keys(MENU_GROUP)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+const MENU_PATH = new RegExp(String.raw`\b(Platform|Schedule|Workflow|Financials|Management)(\s*>\s*\**)(` + MENU_ITEMS + String.raw`)\b`, "g");
+// "Workflow > Financials > Estimates": dois grupos seguidos; fica só o último.
+const STACKED_GROUPS = /\b(?:Platform|Schedule|Workflow|Financials|Management)\s*>\s*\**(?=(?:Platform|Schedule|Workflow|Financials|Management)\b)/g;
+// "Settings > Settings": o item repetido no lugar do grupo.
+const REPEATED_ITEM = /\*{0,2}Settings\*{0,2}\s*>\s*(\*{0,2})Settings\b/g;
+
+/** O modelo às vezes troca o grupo do menu (ex.: "Workflow > Estimates"); corrige pelo mapa oficial. */
+export function fixMenuPaths(text: string): string {
+  return text
+    .replace(STACKED_GROUPS, "")
+    .replace(REPEATED_ITEM, "Management > $1Settings")
+    .replace(MENU_PATH, (_match, _group: string, separator: string, item: string) => `${MENU_GROUP[item]}${separator}${item}`);
+}
+
+/**
+ * Limpa marcas técnicas que às vezes escapam do modelo: links malformados
+ * como [texto](/rota]), links com marcador (<projectId>), linhas "Rota: ..."
+ * e rotas cruas entre parênteses fora de um link. Também remove qualquer linha
+ * que indique o IA Assistant antigo (/ai-assistant), desativado do menu.
+ */
+export function sanitizeAnswer(text: string): string {
+  return text
+    .replace(/^.*\/ai-assistant.*(\r?\n|$)/gim, "")
+    .replace(/\[([^\]]+)\]\((\/[^)\]\s]*)\]/g, "[$1]($2)")
+    .replace(/\[([^\]]+)\]\(\/[^)\s]*<[^>]+>[^)\s]*\)/g, "$1")
+    .replace(/^\s*Rota:.*$/gim, "")
+    .replace(/\s*\[\/[^\]\s]*\](?!\()/g, "")
+    .replace(/(^|[^\]])\s*\((\/[A-Za-z0-9\-/:<>]*)\)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Pergunta usada na busca: a última do usuário, com a anterior para dar contexto a follow-ups curtos. */
 function buildRetrievalQuery(history: HelpChatMessage[]): string {
   const userMessages = history.filter((message) => message.role === "user").map((message) => message.content);
@@ -50,10 +108,14 @@ export class HelpAssistantService {
     return Boolean(openai);
   }
 
-  async reply(history: HelpChatMessage[], ctx: HelpAssistantContext): Promise<HelpAssistantReply> {
+  async reply(history: HelpChatMessage[], requestCtx: HelpAssistantContext): Promise<HelpAssistantReply> {
     if (!openai) {
       throw new Error("OPENAI_KEY is not configured");
     }
+
+    // O idioma da resposta segue a mensagem; o da interface é só o padrão.
+    const lastQuestion = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
+    const ctx: HelpAssistantContext = { ...requestCtx, language: detectLanguage(lastQuestion) ?? requestCtx.language };
 
     const skills = getActiveSkills(ctx);
     const query = buildRetrievalQuery(history);
@@ -105,7 +167,7 @@ export class HelpAssistantService {
       );
 
       if (!calls.length) {
-        return { content: extractText(response), toolsUsed, sources, report };
+        return { content: sanitizeAnswer(fixMenuPaths(extractText(response))), toolsUsed, sources, report };
       }
 
       input.push(...response.output);

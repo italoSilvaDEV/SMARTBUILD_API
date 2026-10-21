@@ -174,21 +174,22 @@ Se a situação mudar para expirada, a tela de assinatura expirada aparece no lu
 **Primeira tela liberada.** O sistema procura, nesta ordem, a primeira tela para a qual o usuário tem permissão:
 
 1. Painel ("Dashboard" ou "Dashboard Simple");
-2. Relatórios ("Reports");
-3. Agenda de trabalhos ("Job Schedule");
-4. Despacho de trabalhos ("Job Dispatch");
-5. Projetos ("Projects");
-6. Clientes ("Clients");
-7. Subcontratados ("Subcontractors");
-8. Atividades ("Activities");
-9. Orçamentos ("Estimates");
-10. Contratos ("Contracts");
-11. Faturas ("Invoice");
-12. Cartões de ponto ("Time Cards");
-13. Catálogo ("Catalog");
-14. Serviços ("Services");
-15. Gerenciamento de usuários ("User Management");
-16. Configurações ("Settings").
+2. Tutorial ("Tutorial");
+3. Relatórios ("Reports");
+4. Agenda de trabalhos ("Job Schedule");
+5. Despacho de trabalhos ("Job Dispatch");
+6. Projetos ("Projects");
+7. Clientes ("Clients");
+8. Subcontratados ("Subcontractors");
+9. Atividades ("Activities");
+10. Orçamentos ("Estimates");
+11. Contratos ("Contracts");
+12. Faturas ("Invoice");
+13. Cartões de ponto ("Time Cards");
+14. Catálogo ("Catalog");
+15. Serviços ("Services");
+16. Gerenciamento de usuários ("User Management");
+17. Configurações ("Settings").
 
 Se nenhuma dessas permissões existir, o sistema abre o Início.
 

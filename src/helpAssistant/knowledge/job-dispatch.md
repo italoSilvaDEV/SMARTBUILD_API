@@ -31,7 +31,7 @@ Enquanto a agenda ("Job Schedule") serve para planejar as datas, o despacho serv
 ### Aba "Dispatch Board"
 
 - Painel "Live Workforce" (em português: "Equipe em tempo real"): mostra o número de pessoas ativas, quantas estão "On Site" (em português: "No local") e quantas estão "Off Site" (em português: "Fora do local"). Abaixo, até cinco funcionários, com o serviço, o local, a hora de entrada ("Check-in") e a última atualização. Quando não há ninguém ativo, aparece "No active workers right now." (em português: "Nenhum funcionário ativo no momento").
-- Painel "Schedule Focus" (em português: "Foco da agenda"): trabalhos que "Due Today" (em português: "Vence hoje"), "Overdue" (em português: "Atrasado"), "Starts Today" (em português: "Começa hoje") e "Unassigned" (em português: "Não atribuído").
+- Painel "Schedule Focus" (em português: "Foco da agenda"): trabalhos que "Due Today" (em português: "Vence hoje"), "Overdue" (em português: "Atrasado"), "Starts Today" (em português: "Começa hoje") e "Unassigned" (em português: "Não atribuído"), que são trabalhos com data mas sem responsável.
 - Painel "Task Focus" (em português: "Foco das tarefas"): tarefas com prazo hoje, atrasadas e "Without Assignee" (em português: "Sem responsável").
 - Painel de trabalhos sem data, chamado "Unassigned Jobs" (em português: "Trabalhos não atribuídos"), com a busca "Search services or location..." (em português: "Buscar serviços ou local...").
 - Atalhos "Open Dispatch", "Open Map" e "Open Tasks" (em português: "Abrir despacho", "Abrir mapa" e "Abrir tarefas") levam às outras abas.
@@ -61,7 +61,7 @@ Enquanto a agenda ("Job Schedule") serve para planejar as datas, o despacho serv
 1. Clique em "Create Job" (em português: "Criar trabalho"), em qualquer aba que tenha o botão.
 2. Escolha um ou mais projetos em "Select projects" (em português: "Selecionar projetos"). Use a busca "Search by name or contract..." (em português: "Buscar por nome ou contrato...") para localizar o projeto. Só aparecem projetos compatíveis; se não houver nenhum, aparece "No compatible projects found." (em português: "Nenhum projeto compatível encontrado").
 3. Clique em "Continue" (em português: "Continuar").
-4. Para cada projeto escolhido, escolha um serviço. A etapa exige que cada projeto selecionado tenha um serviço (ou serviço principal) definido. Se o serviço necessário não existir, use "Custom Service" (em português: "Serviço personalizado").
+4. Para cada projeto escolhido, escolha um serviço. A etapa exige que cada projeto selecionado tenha um serviço definido. Se o serviço necessário não existir, use "Custom Service" (em português: "Serviço personalizado").
 5. Confirme com "Create Job" (em português: "Criar trabalho"). Os trabalhos criados aparecem nas visões de despacho e de agenda.
 
 Se o projeto não tiver localização cadastrada, o sistema mostra o aviso "Project location not informed" (em português: "Localização do projeto não informada").
@@ -98,7 +98,16 @@ Se nenhum serviço estiver sem data, a lista mostra "No unassigned services foun
 
 Tarefas têm prioridade "Low" (em português: "Baixa"), "Medium" (em português: "Média"), "High" (em português: "Alta") ou "Urgent" (em português: "Urgente").
 
-**Trabalhos (serviços) no despacho** não têm um campo de status próprio na tela. Eles aparecem como "Unassigned" enquanto não têm data, e como agendados depois que recebem data e equipe. O estado de concluído vem da agenda (veja a tela "Job Schedule").
+**Trabalhos (serviços) no despacho** aparecem como "Unassigned" enquanto não têm data. Depois de agendados, os cartões nas abas "Dispatch Board" e "Calendar" mostram uma etiqueta de status calculada automaticamente pelo sistema (não é escolhida pelo usuário):
+
+- "Completed" (em português: "Concluído"): o agendamento foi marcado como concluído na agenda (veja a tela "Job Schedule").
+- "Delayed" (em português: "Atrasado"): o horário de fim (ou o prazo) já passou e o trabalho não foi marcado como concluído.
+- "In Progress" (em português: "Em andamento"): o horário atual está entre o início e o fim do agendamento.
+- "Scheduled" (em português: "Agendado"): o agendamento ainda não começou.
+
+Para tirar um trabalho de "Delayed", marque-o como concluído na agenda ou ajuste as datas.
+
+O rótulo "On the Way" (em português: "A caminho") existe nas traduções da tela, mas o sistema não gera esse status hoje: os cartões usam apenas "Completed", "Delayed", "In Progress" e "Scheduled".
 
 **Pessoas na equipe** aparecem como "On Site" (em português: "No local") ou "Off Site" (em português: "Fora do local"). Esse estado vem do último registro de localização enviado pelo aplicativo do funcionário, que indica se ele estava dentro do local do projeto.
 

@@ -15,10 +15,10 @@ O chat é separado do feed de publicações dos projetos. Mensagens do chat não
 ## Onde encontrar
 
 - **Como abrir:** clique no ícone de balão de mensagem na barra superior, ao lado do sino de notificações. Um número amarelo no ícone indica mensagens não lidas (até 9; depois aparece "9+").
-- **Não é um item do menu lateral.** A tela do chat ocupa a tela inteira, sem o menu lateral e sem a barra superior.
+- **Não é um item do menu lateral.** A tela do chat não tem a barra superior. Em computadores, o menu lateral continua visível. Em telas pequenas, o menu é aberto pelo botão "Menu" dentro do chat.
 - **Quem vê o ícone:** usuários com a permissão "Chat". Sem a permissão, o ícone não aparece.
 - **Título da tela:** "Messages" (Mensagens).
-- **Para sair:** clique em "Exit chat" (Sair do chat), no topo da coluna de conversas. Essa ação volta para o Início.
+- **Para sair:** em telas pequenas, clique em "Exit chat" (Sair do chat), no topo da coluna de conversas. Essa ação volta para o Início. Em computadores, use o menu lateral para ir a outras telas.
 
 ## O que aparece na tela
 
@@ -130,7 +130,7 @@ Uma mensagem tem dois estados:
 ## Relação com outros módulos
 
 - **Permissões:** o acesso pelo ícone depende da permissão "Chat".
-- **Equipe:** a lista de contatos e os membros dos grupos vêm dos usuários cadastrados na empresa, em "User Management".
+- **Equipe:** a lista de contatos e os membros dos grupos vêm dos usuários ativos cadastrados na empresa.
 - **Notificações:** o sino de notificações é separado do chat e tem permissão própria, "Notifications".
 - **Feed de projetos:** o chat não se mistura com as publicações das obras.
 
@@ -158,4 +158,4 @@ Uma mensagem tem dois estados:
 **R:** Imagens, vídeos, áudios, PDF, Word (.doc e .docx), Excel (.xls e .xlsx) e arquivos de texto (.txt).
 
 **P:** Como saio do chat?
-**R:** Clique em "Exit chat" (Sair do chat), no topo da lista de conversas. Você volta para o Início.
+**R:** Em telas pequenas, clique em "Exit chat" (Sair do chat), no topo da lista de conversas. Você volta para o Início. Em computadores, use o menu lateral.

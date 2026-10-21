@@ -50,7 +50,7 @@ Lista o tempo e o custo por projeto no período, com os cards "Services" (em por
 
 ### Aba "Payroll" (em português: "Folha de Ponto")
 
-Resumo por funcionário para fechamento de folha. Mostra as horas normais, as horas extras e o total de cada pessoa, com o valor calculado. Ao expandir um funcionário, aparecem os lançamentos com as colunas "Project" (em português: "Projeto"), "Date" (em português: "Data"), "In/Out" (em português: "Entrada/Saída"), "Break" (em português: "Pausa") e "Total". Quando um funcionário não tem horas extras no período, a tabela mostra "Not overtime" (em português: "Sem horas extras").
+Resumo por funcionário para fechamento de folha. Mostra as horas normais, as horas extras e o total de cada pessoa, com o valor calculado. Ao expandir um funcionário, aparecem os lançamentos com as colunas "Project" (em português: "Projeto"), "Date" (em português: "Data"), "In/Out" (em português: "Entrada/Saída"), "Break" (em português: "Pausa") e "Total". Quando o funcionário não tem a opção "Over Time" ligada no cadastro de usuário, a coluna de horas extras mostra "Not overtime" (em português: "Sem horas extras").
 
 ### Aba "Requests" (em português: "Solicitações")
 
@@ -119,7 +119,9 @@ Os tipos de pedido são:
 ### Como as horas extras são calculadas
 
 - A contagem de 40 horas é feita por semana, de segunda-feira a domingo.
-- Quando as horas da semana passam de 40, o excedente só é tratado como hora extra se o lançamento estiver marcado como hora extra (campo de horas extras do registro). Essa marcação é feita no registro do ponto. Quando o lançamento não está marcado, o excedente continua sendo contado como hora normal, sem o acréscimo de 50%.
+- Quando as horas da semana passam de 40, o excedente só é tratado como hora extra se o funcionário tiver a opção "Over Time" ligada no cadastro de usuário (Management > User Management).
+- A coluna de horas extras da tela segue a opção atual do cadastro: com "Over Time" desligado, ela mostra "Not overtime".
+- O valor da hora extra usa a opção gravada em cada registro de ponto no momento do check-in. Ligar a opção depois vale para os próximos registros; registros antigos feitos com a opção desligada continuam sem o acréscimo de 50%.
 - A hora extra é paga com acréscimo de 50% sobre o valor da hora do funcionário (fator x1.5).
 
 ### Como o valor é calculado
@@ -155,10 +157,10 @@ Veja a tela "Break Policies" para as regras detalhadas de desconto automático e
 ## Dúvidas frequentes
 
 **P:** Por que o meu funcionário tem horas acima de 40 e não aparece nenhuma hora extra?
-**R:** O excedente só vira hora extra quando o lançamento está marcado como hora extra. Sem essa marcação, as horas são contadas como normais e pagas pelo valor da hora, sem o acréscimo de 50%.
+**R:** O funcionário está com a opção "Over Time" desligada no cadastro de usuário (Management > User Management). A coluna mostra "Not overtime" enquanto a opção estiver desligada. Ao ligar, a coluna passa a mostrar as horas extras, e o acréscimo de 50% vale para os registros de ponto feitos a partir daí.
 
 **P:** Como é calculado o valor da hora extra?
-**R:** Pelo valor da hora do funcionário multiplicado por 1,5, aplicado somente às horas que passam de 40 na semana e estão marcadas como hora extra.
+**R:** Pelo valor da hora do funcionário multiplicado por 1,5, aplicado somente às horas que passam de 40 na semana, para funcionários com a opção "Over Time" ligada.
 
 **P:** Um funcionário esqueceu de bater o ponto. O que ele faz?
 **R:** Ele envia um pedido do tipo "Missing entry" a partir do aplicativo, com projeto ou serviço, entrada e saída. O gerente revisa na aba "Requests".

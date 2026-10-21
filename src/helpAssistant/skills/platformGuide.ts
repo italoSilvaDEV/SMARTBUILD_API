@@ -11,7 +11,6 @@ export const platformGuideSkill: HelpSkill = {
   instructions: `
 MAPA DA PLATAFORMA (menu lateral do painel web):
 - Dashboard (/home): visão geral da empresa.
-- IA Assistant (/ai-assistant): assistente de análise de dados do negócio (relatórios, rankings).
 - Reports (/reports): relatórios.
 - Schedule: Job Schedule (/seller-schedule) é a agenda de trabalhos; Job Dispatch (/seller/dispatch) é o despacho/mapa das equipes.
 - Workflow: Projects (/seller/projects), Clients (/seller/clients), Subcontractors (/seller/subcontractors), Work Orders (/seller/work-orders), Activities (/activities).

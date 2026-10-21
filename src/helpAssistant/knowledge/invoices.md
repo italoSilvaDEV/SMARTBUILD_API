@@ -68,14 +68,14 @@ Quando não há resultados, aparece: "No invoices found matching your search cri
 O menu de três pontinhos tem o título "Invoice Actions". Os itens podem aparecer ou ficar desabilitados conforme o status e o tipo da fatura:
 
 - "Timeline": abre a linha do tempo da fatura.
-- "Link to Project" (PT: "Link para o projeto"): vincula a fatura a um projeto.
-- "Send Invoices By Email" (PT: "Enviar faturas por e-mail"): abre a janela de envio por e-mail.
+- "Link to Project" (PT: "Link para o projeto"): vincula a fatura a um projeto. Aparece só em faturas avulsas (sem projeto).
+- "Send Invoices By Email" (PT: "Enviar faturas por e-mail"): abre a janela de envio por e-mail. Aparece quando a fatura já tem PDF gerado.
 - "Send Invoice from QuickBooks" (PT: "Enviar fatura do QuickBooks"): aparece só em faturas QuickBooks que não estão pagas nem canceladas e cujo cliente tem e-mail.
-- "View Details" (PT: "Ver detalhes da fatura").
-- "Download Invoice" (PT: "Baixar fatura"): baixa o PDF da fatura.
-- "Download Paid Invoice" (PT: "Baixar fatura paga"): baixa o PDF de recibo. Aparece em faturas Stripe ou Other já pagas.
-- "Generate Payment Link" (PT: "Gerar link de pagamento"): aparece para faturas QuickBooks e Stripe não pagas nem canceladas, quando o cliente tem e-mail.
-- "Generate Invoice Link" (PT: "Gerar link de fatura"): copia o link público da fatura.
+- "View Details" (PT: "Ver detalhes da fatura"): aparece só em faturas Stripe com link de pagamento que ainda não tiveram pagamento concluído.
+- "Download Invoice" (PT: "Baixar fatura"): baixa o PDF da fatura. Aparece em faturas Stripe e Other. Se o PDF ainda não existir, o item fica desabilitado.
+- "Download Paid Invoice" (PT: "Baixar fatura paga"): baixa o PDF de recibo. Aparece em faturas Stripe ou Other já pagas. Se o recibo ainda não foi gerado, o item fica desabilitado.
+- "Generate Payment Link" (PT: "Gerar link de pagamento"): aparece para todas as faturas QuickBooks, e para faturas Stripe não pagas nem canceladas, quando o cliente tem e-mail.
+- "Generate Invoice Link" (PT: "Gerar link de fatura"): copia o link público da fatura. Aparece só em faturas Other.
 - "Receive Payment" (PT: "Receber pagamento"): registra um pagamento. Aparece em faturas não pagas e não canceladas.
 - "Edit Invoice" (PT: "Editar fatura"): abre a edição. Não aparece em faturas pagas ou canceladas. Para faturas Stripe, só aparece quando a cobrança é feita diretamente na página de pagamento (ver "Regras de negócio").
 - "Cancel Invoice" (PT: "Cancelar fatura"): cancela a fatura. Não aparece em faturas canceladas ou pagas.
@@ -92,7 +92,7 @@ Ao clicar em uma linha da tabela, a fatura abre para edição, desde que ela nã
 Ao criar ou editar, abre-se uma janela com o título "Create Invoice" (criação) ou "Edit Invoice" (edição). Ela tem:
 
 - "Client Information" e "Client Selection", com o botão "Select Client" (PT: "Selecionar cliente"). Em fatura avulsa, o cliente é escolhido aqui.
-- "Work Site (Optional)" (PT: "Local de trabalho"), com o botão "Add Work Site" (PT: "Adicionar local de trabalho") para criar um local sem sair da fatura.
+- "Work Site" (PT: "Local de trabalho"), com o botão "Add Work Site" (PT: "Adicionar local de trabalho") para criar um local sem sair da fatura.
 - "Services & Items" (PT: "Serviços e Itens"), com o botão "Add Service" (PT: "Adicionar serviço"). As opções são "Existing Service" (PT: "Serviço Existente"), "Custom Service" (PT: "Serviço personalizado") e "AI Service" (PT: "Serviço de IA"). Também existe a opção "Add Service Manually".
 - "Attachments" (PT: "Anexos"), com imagens e PDFs extras (ver "Regras de negócio").
 - "Payment Details" (PT: "Detalhes de pagamento"), com os campos:
@@ -182,14 +182,14 @@ Não é possível cancelar faturas pagas. Faturas QuickBooks com pagamento parci
 
 ### Como excluir uma fatura
 
-1. Clique no ícone de lixeira da linha, ou escolha a exclusão no menu de ações.
+1. Clique no ícone de lixeira da linha.
 2. Leia a janela "Confirm Deletion" (PT: "Confirmar exclusão") e clique em "Delete Permanently".
 
 A janela avisa: "Warning: This action cannot be undone!" e lista o que será apagado: "Invoice details and line items", "Payment records", "Associated documents", "Client communication history" e "Invoice status and notes". Se a fatura é Other e já está paga, a janela também avisa que o pagamento sairá dos totais financeiros, e a exclusão fica registrada no histórico de auditoria.
 
 Não é possível excluir faturas pagas ou canceladas em geral. Os casos específicos estão em "Regras de negócio".
 
-Para registrar pagamentos, use "Receive Payment" (passo a passo em "Pagamentos de faturas"). Para baixar PDFs, use "Download Invoice" ou "Download Paid Invoice"; se o PDF ainda não existir, o sistema avisa.
+Para registrar pagamentos, use "Receive Payment" (passo a passo em "Pagamentos de faturas"). Para baixar PDFs, use "Download Invoice" ou "Download Paid Invoice"; se o PDF ainda não existir, o item fica desabilitado com uma dica explicando que o arquivo não está disponível.
 
 ## Status e ciclo de vida
 
@@ -244,7 +244,8 @@ Tipos de fatura (coluna "Type" e filtro "Type"):
 
 ### Exclusão
 
-- Faturas **pagas** ou **canceladas** não podem ser excluídas, em regra. O botão aparece desabilitado com a dica "Cannot delete paid or void invoices".
+- Faturas **canceladas** (Canceled) nunca podem ser excluídas: o botão fica desabilitado com a dica "Cannot delete paid or void invoices", seja qual for o tipo da fatura.
+- Faturas **pagas** dos tipos Stripe e QuickBooks também não podem ser excluídas e mostram a mesma dica.
 - Faturas **Other pagas** podem ser excluídas somente se não tiverem vínculo com Stripe nem com QuickBooks. Caso tenham, o sistema bloqueia com a dica "This Other invoice has QuickBooks accounting data and cannot be deleted only in SmartBuild" ou "This Other invoice has Stripe payment data and cannot be deleted only in SmartBuild".
 - Faturas **QuickBooks** com pagamento parcial não podem ser excluídas: "Cannot delete QuickBooks invoice with partial payment".
 - Ao excluir uma fatura QuickBooks, ela também é excluída no QuickBooks: "Invoice deleted successfully from QuickBooks and local database!".
@@ -289,7 +290,7 @@ Tipos de fatura (coluna "Type" e filtro "Type"):
 **R:** "Save Invoice" só salva. "Create & Send" salva, gera o PDF e abre a janela de envio por e-mail, onde você confirma os destinatários e a mensagem.
 
 **P:** Por que o botão de excluir está desabilitado?
-**R:** Faturas pagas ou canceladas não podem ser excluídas. Passe o cursor sobre o botão para ver o motivo exato. Para faturas com vínculo com QuickBooks ou Stripe, a exclusão precisa ser feita pelo sistema de origem.
+**R:** Passe o cursor sobre o botão para ver o motivo exato. Faturas Canceled nunca podem ser excluídas ("Cannot delete paid or void invoices"). Faturas pagas Stripe ou QuickBooks também não. Faturas Other pagas só ficam bloqueadas quando têm dados de pagamento do QuickBooks ou da Stripe. Faturas QuickBooks com pagamento parcial também não podem ser excluídas.
 
 **P:** O que significa "Other" na coluna de tipo?
 **R:** É uma fatura de controle manual, sem cobrança pela Stripe nem pelo QuickBooks. Você registra os pagamentos recebidos.

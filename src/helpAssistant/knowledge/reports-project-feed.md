@@ -99,7 +99,7 @@ A mesma tela permite:
 
 ### Como pesquisar
 
-1. Digite no campo de busca o nome do cliente, o nome do projeto, o nome do serviço ou um trecho do texto da publicação.
+1. Digite no campo de busca o nome do cliente, o nome do serviço ou um trecho do texto da publicação.
 2. A busca é feita sobre as publicações já carregadas na tela, e não sobre a empresa inteira. Para pesquisar mais, primeiro amplie o período.
 
 ### Como comentar ou curtir
@@ -179,7 +179,7 @@ Links públicos têm dois estados:
 ## Dúvidas frequentes
 
 **P:** Por que eu não vejo publicações antigas?
-**R:** A tela abre com o período "Weekly" (últimos 7 dias). Clique em "Monthly" ou em "Filters" para ampliar, ou use o período que precisar.
+**R:** A tela abre com o período "Weekly" (últimos 7 dias). Clique em "Monthly" para ver as publicações desde o dia 1 do mês atual.
 
 **P:** Publiquei uma foto, mas ela não aparece na lista. O que houve?
 **R:** Confira o período selecionado e se há filtro de fotos ativo. Depois, clique em "Refresh" (Atualizar). Se a publicação foi criada há pouco, aguarde alguns segundos.

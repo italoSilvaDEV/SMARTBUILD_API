@@ -29,7 +29,7 @@ Esta base cobre duas áreas diferentes do sistema, que têm nomes parecidos:
 
 ### Catálogo: lista de galerias
 
-- Campo de busca "Search Catalogs" (pesquisar catálogos).
+- Campo de busca "Search catalog".
 - Botão "New Catalog" (novo catálogo), com ícone de mais.
 - Grade de cards, um por galeria. Cada card mostra a imagem de capa, o nome do catálogo e um ícone de lixeira para excluir.
 - Se não houver galerias, aparece a mensagem "No catalogs found. Add a new catalog to get started.".

@@ -100,13 +100,13 @@ Mensagens de erro na janela:
 
 ### Como consultar o link público da fatura
 
-1. Na linha da fatura, no menu de ações, escolha "Generate Invoice Link" (PT: "Gerar link de fatura"). O link é copiado para a área de transferência.
+1. Na linha de uma fatura Other, no menu de ações, escolha "Generate Invoice Link" (PT: "Gerar link de fatura"). O link é copiado para a área de transferência.
 2. Envie o link ao cliente. Quem abrir o link vê os detalhes e pode baixar o PDF.
 
 ### Como gerar o link de pagamento
 
 1. Na linha da fatura, no menu de ações, escolha "Generate Payment Link" (PT: "Gerar link de pagamento").
-2. O link é copiado ("Payment link copied to clipboard!"). Ele só aparece em faturas Stripe ou QuickBooks que não estão pagas nem canceladas, e quando o cliente tem e-mail.
+2. O link é copiado ("Payment link copied to clipboard!"). O item aparece em todas as faturas QuickBooks, e em faturas Stripe que não estão pagas nem canceladas, quando o cliente tem e-mail.
 
 ## Status e ciclo de vida
 
@@ -148,7 +148,6 @@ Status do pagamento online (Stripe), visto pelo cliente e pela equipe:
 - Para faturas QuickBooks, o status é atualizado quando o QuickBooks registra o pagamento.
 - Pagamento parcial: o status vira "Partial". O sistema envia e-mails de pagamento parcial com o valor pago e o saldo restante.
 - Pagamento total: o status vira "Paid". O sistema envia a confirmação "Payment Confirmation" com o PDF pago.
-- Links de pagamento para faturas QuickBooks dependem de a conta QuickBooks ter pagamentos online habilitados.
 
 ### Acesso ao link público
 
@@ -163,7 +162,7 @@ Status do pagamento online (Stripe), visto pelo cliente e pela equipe:
 - **Faturas (Invoices)**: é de lá que você registra pagamentos, gera links e baixa recibos. O status exibido na lista é o mesmo mostrado nas páginas de pagamento.
 - **Configurações (Settings)**: a conexão com Stripe é necessária para pagamentos online e para faturas Stripe. A conexão com QuickBooks é necessária para faturas QuickBooks e para pagamentos registrados no QuickBooks. Veja "Configurações: Stripe e QuickBooks".
 - **Clientes**: o e-mail do cliente é usado para enviar o link, a confirmação e o recibo.
-- **Projetos**: a fatura pertence a um projeto (ou é avulsa), e o pagamento aparece no histórico do projeto.
+- **Projetos**: a fatura pertence a um projeto (ou é avulsa).
 
 ## Dúvidas frequentes
 

@@ -126,7 +126,7 @@ Ao escolher um dos cartões, qualquer rascunho anterior do fluxo é apagado.
 
 ## Status e ciclo de vida
 
-- Ao ser criado, o projeto entra com o status **Pre-Start** (Pré-início). Depois ele pode mudar pela lista ou pela página de detalhes (Em andamento, Vistoria final, Finalizado).
+- Ao ser criado, o projeto entra com o status **Pre-Start** (Pré-início). Depois ele pode mudar pela lista de projetos (Em andamento, Vistoria final, Finalizado).
 - O orçamento inicial é registrado como aprovado, pois faz parte do próprio projeto.
 - Se o fluxo for interrompido antes de criar o projeto (por exemplo, fechando a página), nada é gravado.
 - Se você abrir a etapa de revisão sem ter passado pelas etapas anteriores, aparece a tela "No Project Data Found" (Nenhum dado de projeto encontrado), com o botão "Start New Estimate" (Iniciar novo orçamento), que recomeça o fluxo.
@@ -176,7 +176,7 @@ Ao escolher um dos cartões, qualquer rascunho anterior do fluxo é apagado.
 **R:** O fluxo foi interrompido e os dados temporários não estão mais disponíveis. Clique em "Start New Estimate" para começar de novo.
 
 **P:** O projeto criado já começa em qual status?
-**R:** Em "Pre-Start" (Pré-início). Você muda o status depois, pela lista ou pela página de detalhes.
+**R:** Em "Pre-Start" (Pré-início). Você muda o status depois, pela lista de projetos.
 
 **P:** Posso criar o projeto sem enviar nada ao cliente?
 **R:** Sim. Use "Save". O projeto é criado e nenhum e-mail é enviado.

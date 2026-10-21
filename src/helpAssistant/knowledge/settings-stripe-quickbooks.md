@@ -35,14 +35,13 @@ A tela tem seis abas, nesta ordem: "Payments" (PT: "Pagamentos"), "Subscription"
 
 - Cartão "Payment Setup": "Connect your payment provider account to enable secure payment processing." (conecte a conta do provedor de pagamentos para habilitar o processamento seguro).
 - Etiqueta de situação: "Connected" (PT: "Conectado") ou "Disconnected" (PT: "Desconectado").
-- Botão de conexão com a Stripe. Quando a conta já está conectada, o botão fica desabilitado.
-- Se a conta exigir complementação, a tela indica as pendências da conta Stripe.
+- Botão de conexão com a Stripe.
 
 ### Aba "Integrations" (Integrações)
 
 **Cartão "QuickBooks Integration"** (PT: "Integração com QuickBooks"): "Connect your QuickBooks account to synchronize invoices and financial data."
 
-- Etiqueta "Connected" ou "Disconnected", e o botão de conexão. Quando a conta está conectada e não precisa de nova autorização, o botão fica desabilitado. Se for preciso reautorizar, o botão fica disponível para reconectar.
+- Etiqueta "Connected" ou "Disconnected", e o botão de conexão.
 
 **Cartão "Sync Settings"** (PT: "Configurações de sincronização"): "Choose the entities you want to sync with SmartBuild."
 
@@ -160,7 +159,6 @@ Situação da sincronização por entidade: "Bidirectional", "Disabled" ou "Chec
 - Desconectar para a comunicação com o QuickBooks, mas não apaga os registros que já foram criados ou importados no SmartBuild. Você pode reconectar depois pela aba "Integrations".
 - Para criar faturas no QuickBooks, a conexão precisa estar ativa. Se não estiver, a criação é recusada com "QuickBooks not connected".
 - Faturas QuickBooks com pagamento parcial têm restrições: não podem ser editadas em itens ou valor, nem canceladas ou excluídas.
-- Links de pagamento do QuickBooks dependem de a conta QuickBooks ter pagamentos online habilitados.
 
 ### Lembretes automáticos
 
@@ -196,9 +194,6 @@ Situação da sincronização por entidade: "Bidirectional", "Disabled" ou "Chec
 
 **P:** O que acontece se eu desativar a sincronização de Customers?
 **R:** Os clientes deixam de ser sincronizados automaticamente com o QuickBooks, até você ativar a entidade de novo.
-
-**P:** Por que o botão de conectar a Stripe está desabilitado?
-**R:** Porque a conta já está conectada. O botão só volta a ficar disponível se a conexão for desfeita.
 
 **P:** O cliente vai receber o lembrete mesmo se eu tiver marcado a opção só para antes do vencimento?
 **R:** Só recebem lembrete os tipos que você marcou em "Email Reminders". A regra exata é enviada no dia correspondente, e somente para faturas em aberto com e-mail do cliente.

@@ -78,10 +78,8 @@ Pelo menos um serviço é obrigatório. Sem ele, aparece "Please add at least on
 
 1. Na aba "Change Orders", clique nos três pontos da ordem e escolha **"Send Email"** (ou use "Create & Send" ao criar).
 2. Na janela "Send Change Order" (Enviar pedido de alteração), informe o **"Recipient Email"** (E-mail do destinatário). Ele é obrigatório. Por padrão, o e-mail do cliente do projeto é sugerido.
-3. Opcionalmente, informe o **"Client name (optional)"** (Nome do cliente), que aparece no e-mail.
-4. Se quiser, anexe até 10 arquivos (imagens ou PDF).
-5. Confira a seção "Email Preview" (Visualização de e-mail) e a lista "What will be sent?" (O que será enviado?).
-6. Clique em "Send Email" (Enviar e-mail).
+3. Confira a seção "Email Preview" (Visualização de e-mail) e a lista "What will be sent?" (O que será enviado?).
+4. Clique em "Send Change Order" (Enviar pedido de alteração).
 
 O e-mail tem o assunto **"Change Order Request: Additional items for Project #N"**, traz o número da ordem, o orçamento e o valor adicional, e inclui o PDF da ordem em anexo. O botão do e-mail é **"View Change Order"** (Ver ordem de alteração), que abre a página de aprovação do cliente. Enviar o e-mail **não muda** o status da ordem.
 
@@ -89,7 +87,7 @@ O e-mail tem o assunto **"Change Order Request: Additional items for Project #N"
 
 1. O cliente abre o link recebido por e-mail. A página é a da ordem de alteração, sem login.
 2. A página mostra o documento com número, orçamento, cliente, supervisor, projeto, tabela de serviços ("Services" e "Amount") e o "TOTAL".
-3. Se a ordem estiver pendente, aparece o botão **"Accept & Sign"**. Ao clicar, abre a janela **"Sign Change Order"** (Assinar ordem de alteração), com uma área para desenhar a assinatura.
+3. Se a ordem estiver pendente, ou aprovada aguardando nova assinatura, aparece o botão **"Accept & Sign"**. Ao clicar, abre a janela **"Sign Change Order"** (Assinar ordem de alteração), com uma área para desenhar a assinatura.
 4. Depois de assinar e confirmar, a página mostra a mensagem: "Thank you for accepting the change order! The services will be added to your project." (Obrigado por aceitar a ordem de alteração! Os serviços serão adicionados ao seu projeto.)
 5. Em caso de falha, aparece "Error saving signature. Please try again." (Erro ao salvar a assinatura. Tente novamente.)
 6. O botão **"Download"** baixa o PDF em qualquer situação. Se o PDF não estiver disponível, aparece "PDF not available for this change order".
@@ -136,7 +134,7 @@ Passagem de estados:
 
 - **Número**: cada ordem recebe o próximo número livre, considerando as ordens já existentes do orçamento e do projeto. Por isso, os números são sequenciais dentro do projeto.
 - **Total**: é a soma dos serviços listados na ordem.
-- **Supervisor**: a ordem fica registrada em nome do usuário que a criou. Se o sistema não encontrar esse usuário, a criação falha com "Supervisor information not found" (Informações do supervisor não encontradas).
+- **Supervisor**: a ordem fica registrada em nome do usuário que a criou. Se o sistema não encontrar esse usuário, a criação falha com a mensagem "Supervisor not found".
 - **Efeito da aprovação** (pelo cliente ou manual): os serviços da ordem são adicionados ao final da lista de serviços do orçamento, na ordem em que foram cadastrados. O orçamento é marcado para ter o PDF atualizado.
 - **Aviso à empresa**: quando o cliente assina pela página, a empresa recebe um e-mail com o assunto "APPROVED: Change Order #N added +valor to Estimate" (aprovada, com o valor adicionado ao orçamento).
 - **Remoção de assinatura**: só troca o documento e a exigência de nova assinatura. Os serviços que já entraram no orçamento **não são removidos automaticamente**. Ajuste-os manualmente se for necessário.
