@@ -3698,3 +3698,36 @@ model FeedExternalLike {
   @@unique([activityId, participantId])
   @@map("feed_external_likes")
 }
+
+// Assistente SmartBuild (balão): histórico de conversas.
+// Sem FK para User/Company para não alterar esses modelos; o acesso é
+// sempre filtrado por userId + companyId no servidor.
+model HelpAssistantThread {
+  id        String  @id @default(uuid())
+  title     String? @db.VarChar(200)
+  companyId String
+  userId    String
+
+  messages HelpAssistantMessage[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId, userId, lastMessageAt])
+  @@map("help_assistant_threads")
+}
+
+model HelpAssistantMessage {
+  id       String              @id @default(uuid())
+  threadId String
+  thread   HelpAssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role     String              @db.VarChar(16)
+  content  String              @db.Text
+  report   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([threadId, createdAt])
+  @@map("help_assistant_messages")
+}
