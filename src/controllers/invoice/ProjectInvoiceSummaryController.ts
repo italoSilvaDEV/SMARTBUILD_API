@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { userHasFullAccess } from "../../utils/ownerFullAccess";
+import { projectInvoiceOutstanding } from "../../utils/projectInvoiceOutstanding";
 
 export class ProjectInvoiceSummaryController {
   async handle(req: Request, res: Response) {
@@ -43,13 +44,23 @@ export class ProjectInvoiceSummaryController {
           status: true,
           invoiceType: true,
           totalAmount: true,
+          balanceRemaining: true,
+          totalAmountPaidQbo: true,
+          totalAmountPaid: true,
+          surchargePaymentLocal: true,
+          payment: { select: { amount: true } },
           paymentApplications: { select: { amountApplied: true } },
         },
       });
 
       let paid = 0;
       let received = new Prisma.Decimal(0);
+      let remaining = new Prisma.Decimal(0);
+      let hasIncompleteBalance = false;
       for (const invoice of invoices) {
+        const outstanding = projectInvoiceOutstanding(invoice);
+        if (outstanding === null) hasIncompleteBalance = true;
+        else remaining = remaining.plus(outstanding);
         const status = invoice.status.toLowerCase();
         if (status === "paid") {
           paid++;
@@ -61,7 +72,12 @@ export class ProjectInvoiceSummaryController {
         }
       }
 
-      return res.json({ total: invoices.length, paid, receivedAmount: received.toNumber() });
+      return res.json({
+        total: invoices.length,
+        paid,
+        receivedAmount: received.toNumber(),
+        remainingAmount: hasIncompleteBalance ? null : remaining.toNumber(),
+      });
     } catch (error) {
       console.error("Error fetching project invoice summary:", error);
       return res.status(500).json({ error: "Failed to fetch invoice summary" });
