@@ -2,10 +2,12 @@ import { Router } from "express";
 import { StripeController } from "../controllers/stripe/StripeController";
 import { StripeInvoicePaymentController } from "../controllers/stripe/StripeInvoicePaymentController";
 import { checkToken } from "../middlewares/checkToken";
+import { ProjectInvoiceSummaryController } from "../controllers/invoice/ProjectInvoiceSummaryController";
 
 const stripeRoutes = Router();
 const stripeController = new StripeController();
 const stripeInvoicePaymentController = new StripeInvoicePaymentController();
+const projectInvoiceSummaryController = new ProjectInvoiceSummaryController();
 
 stripeRoutes.get("/stripe/connect/mobile-return", stripeController.mobileConnectReturn.bind(stripeController));
 stripeRoutes.get("/stripe/connect/mobile-refresh", stripeController.mobileConnectRefresh.bind(stripeController));
@@ -22,6 +24,7 @@ stripeRoutes.post("/stripe/invoice/:invoiceId/cancel", checkToken, stripeControl
 stripeRoutes.delete("/stripe/invoice/delete/:invoiceId", checkToken, stripeController.deleteInvoice.bind(stripeController));
 
 // Buscar Invoices relacionadas a um ProjectId
+stripeRoutes.get("/stripe/invoices/:projectId/summary", checkToken, projectInvoiceSummaryController.handle);
 stripeRoutes.get("/stripe/invoices/:projectId", checkToken, stripeController.getInvoicesByProject.bind(stripeController));
 
 stripeRoutes.get("/stripe/company-invoices/:companyId", checkToken, stripeController.getInvoicesByCompany.bind(stripeController));

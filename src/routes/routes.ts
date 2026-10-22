@@ -62,6 +62,7 @@ import { chatRoutes } from './chatRoutes'
 import { subcontractorCollaborationRoutes } from './subcontractorCollaborationRoutes'
 import { timeCardEditRequestRoutes } from './timeCardEditRequestRoutes'
 import { aiAssistantRoutes } from './aiAssistantRoutes'
+import { helpAssistantRoutes } from './helpAssistantRoutes'
 import { extraEmployeeRoutes } from './extraEmployeeRoutes'
 import contractRoutes from './contractRoutes'
 import { mobileAuthRoutes } from './mobileAuthRoutes'
@@ -161,6 +162,7 @@ router.use("/schedule-notifications", scheduleNotificationRoutes)
 router.use(officeRoutes)
 router.use(timeCardEditRequestRoutes)
 router.use(aiAssistantRoutes)
+router.use(helpAssistantRoutes)
 router.use("/extra-employees", extraEmployeeRoutes)
 
 export { router }
