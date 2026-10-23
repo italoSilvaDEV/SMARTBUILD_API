@@ -38,7 +38,7 @@ Este documento explica como entrar no SmartBuild, como trocar de empresa, como m
 - Sem acesso a empresa nenhuma: "No Companies Found" (Nenhuma empresa encontrada), com a orientação "You don't have access to any companies yet. Please contact your administrator." (Você ainda não tem acesso a nenhuma empresa. Entre em contato com o administrador.).
 - Falha ao carregar: "We couldn't load your companies. Please try again." (Não foi possível carregar suas empresas. Tente novamente.).
 - Falha ao selecionar: "Error selecting company. Please try again." (Erro ao selecionar empresa. Tente novamente.).
-- Se a empresa escolhida for de perfil Worker, aparece a tela "Mobile Access Required" (Acesso Mobile Necessário). Ela explica que o funcionário de campo deve usar o aplicativo, com os itens Check-in/Check-out, Projetos e Notificações, e o botão "Download for iOS" (Baixar para iOS). Para Android, aparece "Android version coming soon" (Versão para Android em breve). O botão "Back to Login" (Voltar ao Login) retorna à tela de entrada.
+- Se a empresa escolhida for de perfil Worker, aparece a tela "Mobile Access Required" (Acesso Mobile Necessário). Ela explica que o funcionário de campo deve usar o aplicativo, com os itens Check-in/Check-out, Projetos e Notificações, e as opções para baixar o aplicativo. O botão "Back to Login" (Voltar ao Login) retorna à tela de entrada.
 
 **Recuperação de senha ("Password Recovery")**
 
@@ -233,7 +233,7 @@ Se nenhuma dessas permissões existir, o sistema abre o Início.
 **R:** Saia e entre de novo. Se continuar, aguarde alguns minutos, porque a situação da assinatura é verificada a cada 5 minutos.
 
 **P:** Por que apareceu a tela "Mobile Access Required"?
-**R:** Você tem o perfil Worker nessa empresa. Use o aplicativo móvel para acessar o sistema. Para iPhone, baixe pela App Store; a versão para Android ainda não está disponível.
+**R:** Você tem o perfil Worker nessa empresa. Use o aplicativo móvel para acessar o sistema. Peça ao Owner ou ao Administrator da empresa as orientações para acessar o aplicativo.
 
 **P:** Quero trocar meu plano. Como faço?
 **R:** A troca é feita pela tela de planos, que o Owner ou o Administrator acessa pela área de configurações. Escolha o novo plano e conclua o pagamento na página segura. Para dúvidas sobre cobrança, fale com o suporte.
