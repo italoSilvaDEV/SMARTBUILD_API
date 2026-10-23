@@ -147,7 +147,7 @@ Contas a pagar (Owner, Administrator e Master) e a configuração de pagamentos 
 - O Dashboard lê dados de orçamentos, projetos, faturas, clientes, funcionários e cartões de ponto.
 - Relatórios lê as publicações feitas nos projetos e permite criar links públicos com vários projetos.
 - O chat e as notificações avisam o usuário em tempo real quando chega mensagem nova.
-- O balão "Assistente SmartBuild" responde com base na base de conhecimento do próprio sistema, não nos dados cadastrados da empresa.
+- O balão "Assistente SmartBuild" responde com base na base de conhecimento do sistema e também consulta os dados da empresa, conforme as permissões do usuário.
 
 ## Dúvidas frequentes
 
@@ -164,7 +164,7 @@ Contas a pagar (Owner, Administrator e Master) e a configuração de pagamentos 
 **R:** O item está marcado como "em breve". Ele aparece para quem tem a permissão "Tutorial", mas está desabilitado.
 
 **P:** Eu acesso o sistema pelo navegador e sou Worker. Por que aparece a tela "Mobile Access Required"?
-**R:** Trabalhadores de campo usam o aplicativo móvel para registrar presença e acompanhar projetos. A tela do navegador orienta a baixar o aplicativo para iOS. A versão para Android ainda não está disponível.
+**R:** Trabalhadores de campo usam o aplicativo móvel para registrar presença e acompanhar projetos. A tela do navegador orienta a usar o aplicativo.
 
 **P:** Eu troquei de idioma e ele voltou para inglês em outro computador. Por quê?
 **R:** O idioma é salvo no navegador, não na conta. Escolha o idioma de novo no menu do usuário, em "Languages", em cada computador ou navegador que usar.
