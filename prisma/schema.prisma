@@ -929,6 +929,7 @@ model ImgCatalog {
 }
 
 model Project {
+  budget ProjectBudget?
   externalReports Activities[] @relation("ExternalProjectReports")
   externalReportPhotos GalleryAfter[] @relation("ExternalProjectPhotos")
   id                 String               @id @default(uuid())
@@ -989,6 +990,20 @@ model Project {
   @@index([seller_user_id], map: "project_seller_user_id_fkey")
   @@index([workContextId])
   @@map("project")
+}
+
+// Internal cost targets, independent of contract prices and recorded expenses.
+model ProjectBudget {
+  projectId      String   @id @db.VarChar(191)
+  materials      Decimal? @db.Decimal(14, 2)
+  employees      Decimal? @db.Decimal(14, 2)
+  subcontractors Decimal? @db.Decimal(14, 2)
+  revision       Int      @default(1)
+  updatedBy      String   @db.VarChar(191)
+  updatedAt      DateTime @updatedAt @db.DateTime(3)
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_budgets")
 }
 
 model ContractProject {
