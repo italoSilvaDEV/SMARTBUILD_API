@@ -22,8 +22,9 @@ test('receipt total is not recomputed or combined with tax', () => {
   expect(parseReceipt({ merchant: 'Store', total: '108.25', tax: '8.25', date: '2026-10-27', currency: 'usd', description: '<p>Lumber</p>' }))
     .toEqual({ merchant: 'Store', total: '108.25', date: '2026-10-27', currency: 'USD', description: 'Lumber' });
 });
-test('uncertain totals and invalid dates remain empty for human review', () => {
-  expect(parseReceipt({ total: '1,250.00', date: '2026-02-31', currency: '$' })).toMatchObject({ total: null, date: null, currency: null });
+test('formatted totals are normalized while invalid dates and ambiguous currency remain empty', () => {
+  expect(parseReceipt({ total: '1,250.00', date: '2026-02-31', currency: '$' })).toMatchObject({ total: '1250.00', date: null, currency: null });
+  expect(parseReceipt({ total: null })).toMatchObject({ total: null });
 });
 
 describe('budget persistence rules independent of HTTP', () => {

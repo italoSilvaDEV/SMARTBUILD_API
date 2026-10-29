@@ -15,6 +15,24 @@ export type ReceiptExtraction = {
   attachmentPdf?: string;
 };
 
+export function normalizeReceiptTotal(value: unknown): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  if (typeof value === 'number' && !Number.isFinite(value)) return null;
+  let amount = String(value).trim();
+  if (amount.length > 50) return null;
+  // Remove only explicit currency markers, not arbitrary text or arithmetic.
+  amount = amount.replace(/^(?:US\$|USD|CAD|AUD|EUR|GBP|BRL|R\$|[$€£])\s*/i, '')
+    .replace(/\s*(?:USD|CAD|AUD|EUR|GBP|BRL|[$€£])$/i, '').trim();
+  if (/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(amount)) {
+    amount = amount.replace(/,/g, '');
+  } else if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(amount)) {
+    amount = amount.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d+,\d{1,2}$/.test(amount)) {
+    amount = amount.replace(',', '.');
+  }
+  return /^\d{1,10}(\.\d{1,2})?$/.test(amount) && Number(amount) > 0 ? amount : null;
+}
+
 export function parseReceipt(input: unknown): ReceiptExtraction {
   if (!input || typeof input !== 'object') throw new ReceiptError('INVALID_EXTRACTION', 422);
   const data = input as Record<string, unknown>;
@@ -23,12 +41,11 @@ export function parseReceipt(input: unknown): ReceiptExtraction {
   const date = text('date', 10);
   const validDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) &&
     Number.isFinite(Date.parse(date)) && new Date(date).toISOString().slice(0, 10) === date;
-  const total = text('total', 30);
   const currency = text('currency', 3)?.toUpperCase() ?? null;
   return {
     merchant: text('merchant', 120), description: text('description', 250),
     date: validDate ? date : null,
-    total: total && /^\d{1,10}(\.\d{1,2})?$/.test(total) && Number(total) > 0 ? total : null,
+    total: normalizeReceiptTotal(data.total),
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
   };
 }
@@ -62,7 +79,10 @@ export async function extractReceipt(image: Buffer | Buffer[]): Promise<ReceiptE
       } })), { type: 'text', text: 'Analyze these pages of the same receipt jointly. Extract merchant, date (YYYY-MM-DD), explicit currency (ISO code or null when ambiguous), final total (decimal string or null if not confirmed), and a short description of purchased items. For merchant, read the printed seller name/logo and corroborate with the printed website; never guess a store from the products or use the customer name. For date, transcribe only a clearly readable purchase/receipt date including its printed year, not a delivery date or loyalty statement date. If any field is uncertain, return null for that field instead of guessing. Use null when this is not a receipt.' }] }],
       tools: [{ name: 'receipt_data', description: 'Extract receipt fields for human review; never creates a cost.', input_schema: {
         type: 'object', additionalProperties: false,
-        properties: Object.fromEntries(['merchant', 'date', 'currency', 'total', 'description'].map(key => [key, { type: ['string', 'null'] }])),
+        properties: {
+          ...Object.fromEntries(['merchant', 'date', 'currency', 'description'].map(key => [key, { type: ['string', 'null'] }])),
+          total: { type: ['string', 'null'], description: 'Explicit final purchase total only. Decimal string with dot, no currency symbol or grouping separators (example: 1234.56). Null if not readable.' },
+        },
         required: ['merchant', 'date', 'currency', 'total', 'description'],
       } }],
       tool_choice: { type: 'tool', name: 'receipt_data' },

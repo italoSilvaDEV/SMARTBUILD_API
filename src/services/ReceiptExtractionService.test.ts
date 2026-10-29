@@ -1,7 +1,24 @@
 import axios from 'axios';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
-import { extractReceipt } from './ReceiptExtractionService';
+import { extractReceipt, normalizeReceiptTotal, parseReceipt } from './ReceiptExtractionService';
+
+describe('receipt total normalization', () => {
+  test.each([
+    ['2573.47', '2573.47'], ['$2,573.47', '2573.47'], ['USD 2,573.47', '2573.47'],
+    ['2,573.47 USD', '2573.47'], ['US$ 2,573.47', '2573.47'], [2573.47, '2573.47'],
+    ['44.03', '44.03'], ['2.573,47', '2573.47'], ['2573,47', '2573.47'],
+    ['2,573', '2573'], ['  $44.03  ', '44.03'],
+  ])('normalizes %p without changing the value', (input, expected) => {
+    expect(normalizeReceiptTotal(input)).toBe(expected);
+    expect(parseReceipt({ total: input }).total).toBe(expected);
+  });
+  test.each([null, undefined, '', 'unknown', '$0.00', '-12.00', '(12.00)', '2,57,3.47',
+    '2.573', '2573.471', '2573.47 or 2958.96', '2958.96 - 385.49', 'Total: $2573.47', Infinity, NaN,
+    '99999999999.99', '<b>2573.47</b>'])('rejects ambiguous or invalid value %p', input => {
+    expect(normalizeReceiptTotal(input)).toBeNull();
+  });
+});
 
 jest.mock('axios');
 
@@ -55,6 +72,12 @@ describe('receipt provider boundary', () => {
       total: null, currency: 'USD', subtotal: '2958.96', balanceDue: '0.00',
     } }] } });
     expect((await extractReceipt(await image())).total).toBeNull();
+  });
+  it('preserves a recognized total even if the provider includes currency and grouping', async () => {
+    post.mockResolvedValue({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'receipt_data', input: {
+      total: '$2,573.47', currency: 'USD',
+    } }] } });
+    expect((await extractReceipt(await image())).total).toBe('2573.47');
   });
   it('rejects empty or excessive page counts without contacting AI', async () => {
     await expect(extractReceipt([])).rejects.toMatchObject({ code: 'INVALID_RECEIPT_IMAGE' });
