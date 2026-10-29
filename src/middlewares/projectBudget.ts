@@ -42,13 +42,13 @@ export function requireReceiptScanConfiguration(req: Request, res: Response, nex
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 0 },
-}).single('file');
+  limits: { fileSize: 8 * 1024 * 1024, files: 5, fields: 0 },
+}).array('file', 5);
 
 export function uploadProjectReceipt(req: Request, res: Response, next: NextFunction) {
   upload(req, res, error => {
-    if (error || !req.file) {
-      return res.status(400).json({ code: 'INVALID_RECEIPT_IMAGE', error: 'Use an image up to 8 MB' });
+    if (error || !Array.isArray(req.files) || !req.files.length) {
+      return res.status(400).json({ code: 'INVALID_RECEIPT_IMAGE', error: 'Use 1 to 5 images, up to 8 MB each' });
     }
     return next();
   });

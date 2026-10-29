@@ -29,11 +29,11 @@ export class ProjectBudgetController {
   }
 
   async extractReceipt(req: Request, res: Response) {
-    if (!req.file) {
-      return res.status(400).json({ code: 'INVALID_RECEIPT_IMAGE', error: 'Use an image up to 8 MB' });
+    if (!Array.isArray(req.files) || !req.files.length) {
+      return res.status(400).json({ code: 'INVALID_RECEIPT_IMAGE', error: 'Use 1 to 5 images, up to 8 MB each' });
     }
     try {
-      return res.json({ receipt: await extractReceipt(req.file.buffer) });
+      return res.json({ receipt: await extractReceipt(req.files.map(file => file.buffer)) });
     } catch (error) {
       const failure = error instanceof ReceiptError ? error : new ReceiptError('RECEIPT_AI_FAILED', 502);
       return res.status(failure.status).json({ code: failure.code, error: failure.message });
