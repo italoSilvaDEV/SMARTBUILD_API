@@ -75,3 +75,23 @@ test('extraction returns a draft only, without creating a budget or cost', async
   expect(prisma.$transaction).not.toHaveBeenCalled();
 });
 afterAll(() => { delete process.env.ANTHROPIC_API_KEY; });
+
+test('multiple pages reach extraction in one request, without writing costs', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-only';
+  (extractReceipt as jest.Mock).mockResolvedValue({ total: null, currency: 'USD' });
+  const res = await request(app).post(scan).set('Authorization', 'user')
+    .attach('file', Buffer.from('page-one'), 'first.jpg')
+    .attach('file', Buffer.from('page-two'), 'second.jpg');
+  expect(res.status).toBe(200);
+  expect(res.body.receipt.total).toBeNull();
+  expect(extractReceipt).toHaveBeenCalledWith([Buffer.from('page-one'), Buffer.from('page-two')]);
+  expect(prisma.$transaction).not.toHaveBeenCalled();
+});
+
+test('upload refuses more than five pages before extraction', async () => {
+  process.env.ANTHROPIC_API_KEY = 'test-only';
+  let pending = request(app).post(scan).set('Authorization', 'user');
+  for (let index = 0; index < 6; index++) pending = pending.attach('file', Buffer.from('image'), `page-${index}.jpg`);
+  expect((await pending).status).toBe(400);
+  expect(extractReceipt).not.toHaveBeenCalled();
+});
