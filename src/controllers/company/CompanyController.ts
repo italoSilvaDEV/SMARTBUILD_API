@@ -783,14 +783,15 @@ export class CompanyController {
                                 is: {
                                     office: {
                                         is: {
-                                            name: "Owner"
+                                            name: { in: ["Owner", "Administrator"] }
                                         }
                                     }
                                 }
                             }
                         },
+                        orderBy: { createdAt: "asc" },
                         select: {
-                            user: true
+                            user: { include: { office: { select: { name: true } } } }
                         }
                     },
                     Subscription: {
@@ -826,7 +827,10 @@ export class CompanyController {
             // Processar URLs dos avatares e filtrar subscriptions ativas
             const companyWithPresignedAvatar = await Promise.all(
                 response.map(async (company) => {
-                    const adminUser = company.userCompanies[0]?.user;
+                    // Owner continua sendo a base das regras; sem owner, exibe o primeiro admin como fallback
+                    const ownerUser = company.userCompanies.find(uc => uc.user.office?.name === "Owner")?.user;
+                    const adminUser = ownerUser;
+                    const displayUser = ownerUser ?? company.userCompanies[0]?.user;
                     const oneMonthAgo = new Date();
                     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
@@ -865,9 +869,9 @@ export class CompanyController {
                     return {
                         ...company,
                         avatar: company.avatar ? await getPresignedUrl(company.avatar) : null,
-                        User: adminUser ? {
-                            ...adminUser,
-                            avatar: adminUser?.avatar ? await getPresignedUrl(adminUser.avatar) : null
+                        User: displayUser ? {
+                            ...displayUser,
+                            avatar: displayUser?.avatar ? await getPresignedUrl(displayUser.avatar) : null
                         } : null,
                         Subscription: company.Subscription?.map(sub => ({
                             id: sub.id,
