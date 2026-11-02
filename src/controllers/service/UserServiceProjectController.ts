@@ -9,6 +9,15 @@ import {
 } from "../../utils/scheduleAssignmentLinks";
 import { userCanViewFinancials } from "../../utils/financialAccess";
 
+const MAX_EMPLOYEES_PER_PAGE = 50;
+
+export function parseOptionalPagination(query: Request["query"]) {
+  if (query.page === undefined) return null;
+  const page = Math.max(Number(query.page) || 0, 0);
+  const perPage = Math.min(Math.max(Number(query.per_page) || 20, 1), MAX_EMPLOYEES_PER_PAGE);
+  return { page, perPage };
+}
+
 export class UserServiceProjectController {
   // Criar um novo UserServiceProject
 
@@ -153,31 +162,44 @@ export class UserServiceProjectController {
     try {
       const { id, id_company } = req.params; // ID do ServiceProject
       const isMultiCompany = await isMultiCompanyEnabled()
-      // Obter todos os usuários da empresa (employees)
-      const employees = await prisma.user.findMany({
-        where: {
-          AND: [
-            isMultiCompany ? {
-              companies: {
-                some: {
-                  companyId: {
-                    equals: id_company
-                  },
-                  office: {
-                    name: "Worker"
-                  }
+      // Paginação opcional: só pagina quando `page` vem na query. Sem ela, a resposta
+      // continua sendo o array completo que as telas existentes esperam.
+      const pagination = parseOptionalPagination(req.query);
+      const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const where: Prisma.UserWhereInput = {
+        AND: [
+          isMultiCompany ? {
+            companies: {
+              some: {
+                companyId: {
+                  equals: id_company
+                },
+                office: {
+                  name: "Worker"
                 }
               }
-            } : {
-              company_id: {
-                equals: id_company
-              },
-              office: {
-                name: "Worker"
-              }
             }
-          ]
-        },
+          } : {
+            company_id: {
+              equals: id_company
+            },
+            office: {
+              name: "Worker"
+            }
+          },
+          ...(pagination && search ? [{ name: { contains: search } }] : []),
+        ]
+      };
+      // Obter todos os usuários da empresa (employees)
+      const employeesQuery = {
+        where,
+        ...(pagination
+          ? {
+              orderBy: [{ name: "asc" as const }, { id: "asc" as const }],
+              skip: pagination.page * pagination.perPage,
+              take: pagination.perPage,
+            }
+          : {}),
         select: {
           id: true,
           avatar: true,
@@ -207,7 +229,14 @@ export class UserServiceProjectController {
             },
           },
         },
-      });
+      } satisfies Prisma.UserFindManyArgs;
+
+      const [employees, total] = pagination
+        ? await prisma.$transaction([
+            prisma.user.findMany(employeesQuery),
+            prisma.user.count({ where }),
+          ])
+        : [await prisma.user.findMany(employeesQuery), null];
 
       // Formatar o resultado
       const result = await Promise.all(employees.map(async (employee) => {
@@ -231,6 +260,16 @@ export class UserServiceProjectController {
           })),
         };
       }));
+
+      if (pagination && total !== null) {
+        return res.status(200).json({
+          data: result,
+          total,
+          page: pagination.page,
+          perPage: pagination.perPage,
+          hasMore: (pagination.page + 1) * pagination.perPage < total,
+        });
+      }
 
       res.status(200).json(result);
     } catch (error) {
