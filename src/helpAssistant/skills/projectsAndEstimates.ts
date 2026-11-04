@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
+import { projectIdFilter } from "../projectScope";
 import { HelpSkill, HelpTool } from "../types";
 
 /**
@@ -43,11 +44,12 @@ const tools: HelpTool[] = [
     readOnly: true,
     requiredPermissions: ["Projects"],
     requiresFullProjectAccess: true,
+    projectScoped: true,
     parameters: { type: "object", properties: {} },
     async run(_args, ctx) {
       const rows = await prisma.project.groupBy({
         by: ["status_project"],
-        where: { company_id: ctx.companyId! },
+        where: { company_id: ctx.companyId!, ...projectIdFilter(ctx) },
         _count: { _all: true },
       });
       const byStatus = Object.fromEntries(rows.map((row) => [row.status_project, row._count._all]));
@@ -66,6 +68,7 @@ const tools: HelpTool[] = [
     readOnly: true,
     requiredPermissions: ["Projects"],
     requiresFullProjectAccess: true,
+    projectScoped: true,
     parameters: {
       type: "object",
       properties: {
@@ -81,6 +84,7 @@ const tools: HelpTool[] = [
       const contract = Number(search);
       const where: Prisma.ProjectWhereInput = {
         company_id: ctx.companyId!,
+        ...projectIdFilter(ctx),
         ...(statuses ? { status_project: { in: statuses } } : {}),
         ...(search
           ? {
@@ -190,7 +194,7 @@ const tools: HelpTool[] = [
       const start = typeof args.startDate === "string" ? new Date(args.startDate) : null;
       const end = typeof args.endDate === "string" ? new Date(`${args.endDate}T23:59:59.999`) : null;
       const where: Prisma.EstimateWhereInput = {
-        project: { company_id: ctx.companyId! },
+        project: { company_id: ctx.companyId!, ...projectIdFilter(ctx) },
         ...(statuses.length ? { status: { in: statuses } } : {}),
         ...(start || end
           ? { date_creation: { ...(start && !Number.isNaN(start.getTime()) ? { gte: start } : {}), ...(end && !Number.isNaN(end.getTime()) ? { lte: end } : {}) } }

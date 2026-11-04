@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
+import { invoiceScope } from "../projectScope";
 import { PENDING_INVOICE_STATUSES } from "../../utils/invoiceListFilters";
 import { HelpSkill, HelpTool } from "../types";
 
@@ -109,9 +110,9 @@ const invoiceSelect = {
 } satisfies Prisma.InvoiceSelect;
 
 /** Totais de faturas pela regra oficial; usado também pela visão geral da empresa. */
-export async function summarizeInvoices(companyId: string) {
+export async function summarizeInvoices(companyId: string, scope: Prisma.InvoiceWhereInput = {}) {
   const invoices = await prisma.invoice.findMany({
-    where: { companyId, AND: [NOT_SUPERSEDED] },
+    where: { companyId, AND: [NOT_SUPERSEDED, scope] },
     select: { status: true, totalAmount: true, balanceRemaining: true, dueDate: true },
   });
   const now = new Date();
@@ -139,9 +140,9 @@ export async function summarizeInvoices(companyId: string) {
   };
 }
 
-async function pendingInvoices(companyId: string) {
+async function pendingInvoices(companyId: string, scope: Prisma.InvoiceWhereInput = {}) {
   return prisma.invoice.findMany({
-    where: { companyId, status: { in: PENDING }, AND: [NOT_SUPERSEDED] },
+    where: { companyId, status: { in: PENDING }, AND: [NOT_SUPERSEDED, scope] },
     select: invoiceSelect,
   });
 }
@@ -159,7 +160,7 @@ const receivableTools: HelpTool[] = [
       const invoices = await prisma.invoice.findMany({
         where: {
           companyId: ctx.companyId!,
-          AND: [NOT_SUPERSEDED],
+          AND: [NOT_SUPERSEDED, invoiceScope(ctx)],
           ...(range.gte || range.lte ? { createdAt: { gte: range.gte, lte: range.lte } } : {}),
         },
         select: { status: true, totalAmount: true, balanceRemaining: true, dueDate: true },
@@ -212,7 +213,7 @@ const receivableTools: HelpTool[] = [
       const limit = Math.min(Math.max(Number(args.limit) || 15, 1), 50);
       const clientName = typeof args.clientName === "string" ? args.clientName.trim().toLowerCase() : "";
       const now = new Date();
-      const overdue = (await pendingInvoices(ctx.companyId!))
+      const overdue = (await pendingInvoices(ctx.companyId!, invoiceScope(ctx)))
         .filter((invoice) => invoice.dueDate && invoice.dueDate < now)
         .filter((invoice) => !clientName || (invoice.project?.client?.name ?? "").toLowerCase().includes(clientName))
         .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime());
@@ -250,7 +251,7 @@ const receivableTools: HelpTool[] = [
         "61-90": { count: 0, amount: 0 },
         "90+": { count: 0, amount: 0 },
       };
-      for (const invoice of await pendingInvoices(ctx.companyId!)) {
+      for (const invoice of await pendingInvoices(ctx.companyId!, invoiceScope(ctx))) {
         const days = invoice.dueDate ? Math.floor((now.getTime() - invoice.dueDate.getTime()) / 86400000) : -1;
         const key = days <= 0 ? "notDueYet" : days <= 30 ? "1-30" : days <= 60 ? "31-60" : days <= 90 ? "61-90" : "90+";
         buckets[key].count += 1;
@@ -271,7 +272,7 @@ const receivableTools: HelpTool[] = [
       const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 50);
       const now = new Date();
       const byClient = new Map<string, { client: string; pending: number; overdue: number; invoices: number }>();
-      for (const invoice of await pendingInvoices(ctx.companyId!)) {
+      for (const invoice of await pendingInvoices(ctx.companyId!, invoiceScope(ctx))) {
         const name = invoice.project?.client?.name ?? "Sem cliente";
         const entry = byClient.get(name) ?? { client: name, pending: 0, overdue: 0, invoices: 0 };
         const value = outstanding(invoice);
@@ -312,7 +313,7 @@ const receivableTools: HelpTool[] = [
       const clientName = typeof args.clientName === "string" ? args.clientName.trim().toLowerCase() : "";
       const now = new Date();
       const horizon = new Date(now.getTime() + days * 86400000);
-      const pending = (await pendingInvoices(ctx.companyId!)).filter(
+      const pending = (await pendingInvoices(ctx.companyId!, invoiceScope(ctx))).filter(
         (invoice) => !clientName || (invoice.project?.client?.name ?? "").toLowerCase().includes(clientName)
       );
 
@@ -352,7 +353,7 @@ const receivableTools: HelpTool[] = [
       const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
       const now = new Date();
       const invoices = await prisma.invoice.findMany({
-        where: { companyId: ctx.companyId!, status: { not: "void" }, AND: [NOT_SUPERSEDED] },
+        where: { companyId: ctx.companyId!, status: { not: "void" }, AND: [NOT_SUPERSEDED, invoiceScope(ctx)] },
         select: invoiceSelect,
       });
 

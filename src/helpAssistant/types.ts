@@ -16,6 +16,13 @@ export interface HelpAssistantContext {
   permissions: string[];
   /** Owner/Administrator ou usuário com acesso a todos os projetos. */
   fullProjectAccess: boolean;
+  /**
+   * Quem não tem acesso total vê só os projetos em que é vendedor ou gerente (mesma regra da tela Projects).
+   * null = vê todos. As tools de projeto precisam respeitar esta lista.
+   */
+  visibleProjectIds: string[] | null;
+  /** Vê todas as faturas da empresa (Owner ou invoiceEditAll). Senão, só as que criou ou dos projetos que gerencia. */
+  invoiceAccessAll: boolean;
   /** Rota atual do front (ex.: /seller/projects). Apenas informativa. */
   route: string | null;
   language: string;
@@ -59,6 +66,13 @@ export interface HelpTool {
   requiredPermissions?: string[];
   /** Exige acesso a todos os projetos da empresa. */
   requiresFullProjectAccess?: boolean;
+  /**
+   * A tool aplica sozinha o recorte de projetos visíveis (ctx.visibleProjectIds), então também é
+   * oferecida a quem não tem acesso total. Sem isto, requiresFullProjectAccess a bloqueia.
+   */
+  projectScoped?: boolean;
+  /** Consulta faturas da empresa toda sem recorte: só para quem vê todas as faturas (Owner ou invoiceEditAll). */
+  requiresFullInvoiceAccess?: boolean;
   /** Quando true, o retorno `{ report }` vira o relatório da resposta. */
   producesReport?: boolean;
   /** Monta o relatório padrão (tabela/gráfico) a partir do retorno da tool; o servidor o anexa à resposta. */

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
+import { projectIdIn } from "../projectScope";
 import { HelpReport, HelpSkill, HelpTool } from "../types";
 
 /**
@@ -100,6 +101,7 @@ const workOrders: HelpTool = {
   readOnly: true,
   requiredPermissions: ["Projects"],
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: {
@@ -112,15 +114,17 @@ const workOrders: HelpTool = {
     const companyId = ctx.companyId!;
     const statuses = list(args.status).filter((s): s is (typeof WORK_ORDER_STATUSES)[number] => (WORK_ORDER_STATUSES as readonly string[]).includes(s));
     const search = text(args.search);
+    const scope = projectIdIn(ctx) ? { projectId: projectIdIn(ctx) } : {};
     const where: Prisma.WorkOrderWhereInput = {
       companyId,
+      ...scope,
       ...(statuses.length ? { status: { in: statuses } } : {}),
       ...(search
         ? { OR: [{ title: { contains: search } }, { projectName: { contains: search } }, { projectAddress: { contains: search } }, { assigneeName: { contains: search } }] }
         : {}),
     };
     const [byStatus, total, rows] = await Promise.all([
-      prisma.workOrder.groupBy({ by: ["status"], where: { companyId }, _count: { _all: true } }),
+      prisma.workOrder.groupBy({ by: ["status"], where: { companyId, ...scope }, _count: { _all: true } }),
       prisma.workOrder.count({ where }),
       prisma.workOrder.findMany({
         where,
@@ -192,6 +196,7 @@ const bidRequests: HelpTool = {
   readOnly: true,
   requiredPermissions: ["Projects"],
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: {
@@ -204,8 +209,10 @@ const bidRequests: HelpTool = {
     const companyId = ctx.companyId!;
     const statuses = list(args.status).filter((s): s is (typeof BID_STATUSES)[number] => (BID_STATUSES as readonly string[]).includes(s));
     const search = text(args.search);
+    const scope = projectIdIn(ctx) ? { projectId: projectIdIn(ctx) } : {};
     const where: Prisma.BidRequestWhereInput = {
       companyId,
+      ...scope,
       ...(statuses.length ? { status: { in: statuses } } : {}),
       ...(search
         ? {
@@ -219,7 +226,7 @@ const bidRequests: HelpTool = {
         : {}),
     };
     const [byStatus, total, rows] = await Promise.all([
-      prisma.bidRequest.groupBy({ by: ["status"], where: { companyId }, _count: { _all: true } }),
+      prisma.bidRequest.groupBy({ by: ["status"], where: { companyId, ...scope }, _count: { _all: true } }),
       prisma.bidRequest.count({ where }),
       prisma.bidRequest.findMany({
         where,

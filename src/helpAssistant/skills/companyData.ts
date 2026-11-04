@@ -1,6 +1,7 @@
 import { AIAssistantController } from "../../controllers/aiAssistant/AIAssistantController";
 import { prisma } from "../../utils/prisma";
 import { HelpSkill, HelpTool } from "../types";
+import { canSeeProject, invoiceScope, NO_PROJECT_ACCESS } from "../projectScope";
 import { buildAutoReport } from "../reportAssembly";
 import { summarizeInvoices } from "./receivables";
 
@@ -35,6 +36,9 @@ export function legacyToolAllowed(toolName: string, ctx: { permissions: string[]
 }
 
 export { annotateMoney };
+
+/** Consultas antigas de fatura/financeiro que somam a empresa toda, sem recorte por usuário. */
+const UNSCOPED_INVOICE_TOOLS = new Set(["list_invoices", "financial_period_comparison"]);
 
 const PROJECTS = ["Projects"];
 const PROJECT_FINANCE = ["Projects", "Invoice"];
@@ -158,6 +162,8 @@ const dataTools: HelpTool[] = legacy
   .filter((tool) => TOOL_ACCESS[tool.name])
   .map((tool) => {
     const access = TOOL_ACCESS[tool.name];
+    // Consultas de um projeto específico (projectId obrigatório) valem para o operador sem acesso total, só nos projetos dele.
+    const takesProjectId = ((tool.parameters as any)?.required ?? []).includes("projectId");
     return {
       name: tool.name,
       description: tool.description,
@@ -165,9 +171,12 @@ const dataTools: HelpTool[] = legacy
       parameters: tool.parameters,
       requiredPermissions: access.permissions,
       requiresFullProjectAccess: access.fullProjectAccess,
+      projectScoped: takesProjectId,
+      requiresFullInvoiceAccess: UNSCOPED_INVOICE_TOOLS.has(tool.name),
       buildReport: (args, output) => buildAutoReport(tool.name, args, output),
       async run(args, ctx) {
         if (!ctx.companyId) return { error: "no active company" };
+        if (takesProjectId && !canSeeProject(ctx, args.projectId)) return NO_PROJECT_ACCESS;
         const result = await legacy.executeTool(tool.name, JSON.stringify(args ?? {}), ctx.companyId, [], "");
         return annotateMoney(fixLegacyOutput(tool.name, result?.output));
       },
@@ -190,7 +199,7 @@ const companyOverviewTool: HelpTool = {
       prisma.project.count({ where: { company_id: ctx.companyId, status_project: { in: ACTIVE_PROJECT_STATUSES } } }),
       prisma.project.count({ where: { company_id: ctx.companyId } }),
       prisma.client.count({ where: { company_id: ctx.companyId } }),
-      summarizeInvoices(ctx.companyId),
+      summarizeInvoices(ctx.companyId, invoiceScope(ctx)),
       legacy.executeTool("top_spending_projects", JSON.stringify({ limit: 3 }), ctx.companyId, [], ""),
     ]);
     return annotateMoney({

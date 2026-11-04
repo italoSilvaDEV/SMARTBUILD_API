@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
+import { projectIdIn } from "../projectScope";
 import { HelpReport, HelpSkill, HelpTool } from "../types";
 
 /**
@@ -253,6 +254,7 @@ const jobSchedule: HelpTool = {
   readOnly: true,
   requiredPermissions: ["Job Schedule"],
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: {
@@ -272,6 +274,7 @@ const jobSchedule: HelpTool = {
     const rows = await prisma.serviceProject.findMany({
       where: {
         company_id: companyId,
+        ...(projectIdIn(ctx) ? { projectId: projectIdIn(ctx) } : {}),
         OR: [{ start_date: { not: null } }, { deadline: { not: null } }],
         ...(status ? { status: { contains: status } } : {}),
         ...(search ? { AND: [{ OR: [{ name: { contains: search } }, { Project: { location: { contains: search } } }] }] } : {}),

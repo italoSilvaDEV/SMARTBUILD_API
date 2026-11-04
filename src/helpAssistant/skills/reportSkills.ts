@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { compactForModel } from "../compact";
+import { canSeeProject, invoiceScope, NO_PROJECT_ACCESS, projectIdFilter } from "../projectScope";
 import { buildAutoReport } from "../reportAssembly";
 import { AUTO_REPORT_KEY, HelpReport, HelpSkill, HelpTool } from "../types";
 import { annotateMoney, runLegacyQuery } from "./companyData";
@@ -121,6 +122,7 @@ const projectFullReport: HelpTool = {
   readOnly: true,
   requiredPermissions: PROJECT_FINANCE,
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: { projectId: { type: "string" } },
@@ -129,6 +131,7 @@ const projectFullReport: HelpTool = {
   async run(args, ctx) {
     const projectId = typeof args.projectId === "string" ? args.projectId : "";
     if (!projectId || !ctx.companyId) return { error: "projectId is required" };
+    if (!canSeeProject(ctx, projectId)) return NO_PROJECT_ACCESS;
     const base = { projectId };
     const { outputs, sections } = await runQueries(
       [
@@ -166,7 +169,7 @@ const companyFullReport: HelpTool = {
     const [statusGroups, clients, invoices, queries, natives] = await Promise.all([
       prisma.project.groupBy({ by: ["status_project"], where: { company_id: companyId }, _count: { _all: true }, _sum: { price: true } }),
       prisma.client.count({ where: { company_id: companyId } }),
-      summarizeInvoices(companyId),
+      summarizeInvoices(companyId, invoiceScope(ctx)),
       runQueries(
         [
           { key: "topSpending", tool: "top_spending_projects", args: { limit } },
@@ -352,16 +355,18 @@ const METRIC_COLUMNS: Record<Metric, { columns: { key: string; label: string }[]
   },
 };
 
-async function resolveProjects(args: Record<string, unknown>, companyId: string) {
+async function resolveProjects(args: Record<string, unknown>, companyId: string, ctx: { visibleProjectIds: string[] | null }) {
   const ids = Array.isArray(args.projectIds) ? args.projectIds.filter((id): id is string => typeof id === "string").slice(0, MAX_PROJECTS) : [];
   const search = typeof args.search === "string" ? args.search.trim() : "";
   const requested = Array.isArray(args.status) ? args.status.filter((s): s is string => typeof s === "string") : [];
   const statuses = requested.length ? requested : ACTIVE_STATUSES;
 
+  const scope = projectIdFilter(ctx as any);
   const where: Prisma.ProjectWhereInput = ids.length
-    ? { company_id: companyId, id: { in: ids } }
+    ? { company_id: companyId, id: { in: ctx.visibleProjectIds ? ids.filter((id) => ctx.visibleProjectIds!.includes(id)) : ids } }
     : {
         company_id: companyId,
+        ...scope,
         status_project: { in: statuses },
         ...(search ? { OR: [{ location: { contains: search } }, { client: { name: { contains: search } } }] } : {}),
       };
@@ -384,6 +389,7 @@ const compareProjects: HelpTool = {
   readOnly: true,
   requiredPermissions: PROJECT_FINANCE,
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: {
@@ -400,7 +406,7 @@ const compareProjects: HelpTool = {
     const metrics = (Array.isArray(args.metrics) ? args.metrics : []).filter((m): m is Metric => METRICS.includes(m as Metric));
     if (!metrics.length) return { error: "choose at least one metric", available: METRICS };
 
-    const { total, projects } = await resolveProjects(args, ctx.companyId);
+    const { total, projects } = await resolveProjects(args, ctx.companyId, ctx);
     if (!projects.length) return { error: "no projects found", total: 0 };
 
     const columns = [
@@ -579,6 +585,7 @@ const estimatesVsActual: HelpTool = {
   readOnly: true,
   requiredPermissions: PROJECT_FINANCE,
   requiresFullProjectAccess: true,
+  projectScoped: true,
   parameters: {
     type: "object",
     properties: {
@@ -590,7 +597,7 @@ const estimatesVsActual: HelpTool = {
   },
   async run(args, ctx) {
     if (!ctx.companyId) return { error: "no active company" };
-    const { total, projects } = await resolveProjects(args, ctx.companyId);
+    const { total, projects } = await resolveProjects(args, ctx.companyId, ctx);
     if (!projects.length) return { error: "no projects found", total: 0 };
 
     const rows = (
