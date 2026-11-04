@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/prisma";
-import { HelpChatMessage, HelpReport } from "./types";
+import { HelpChatMessage, HelpReport, HelpThreadContext } from "./types";
 
 /**
  * Histórico de conversas do assistente. Toda leitura e escrita é filtrada
@@ -18,14 +18,49 @@ export interface StoredMessage {
   createdAt: Date;
 }
 
+/**
+ * O JSON `report` guarda o relatório e, junto, o contexto da conversa (projeto em foco).
+ * Resposta sem relatório mas com contexto é gravada como `{ title: "", context }`.
+ */
+function unpackReport(raw: Prisma.JsonValue): { report: HelpReport | null; context: HelpThreadContext | null } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { report: null, context: null };
+  const { context, ...rest } = raw as Record<string, unknown>;
+  const report = typeof rest.title === "string" && rest.title.trim() ? (rest as unknown as HelpReport) : null;
+  return { report, context: (context as HelpThreadContext | undefined) ?? null };
+}
+
 function toStored(row: { id: string; role: string; content: string; report: Prisma.JsonValue; createdAt: Date }): StoredMessage {
   return {
     id: row.id,
     role: row.role === "assistant" ? "assistant" : "user",
     content: row.content,
-    report: (row.report as unknown as HelpReport | null) ?? null,
+    report: unpackReport(row.report).report,
     createdAt: row.createdAt,
   };
+}
+
+/** Contexto (projeto/subcontractor em foco) mais recente da conversa. */
+export async function getThreadContext(threadId: string): Promise<HelpThreadContext | null> {
+  const rows = await prisma.helpAssistantMessage.findMany({
+    where: { threadId, role: "assistant" },
+    orderBy: { createdAt: "desc" },
+    take: 6,
+    select: { report: true },
+  });
+  const merged: HelpThreadContext = {};
+  for (const row of rows) {
+    const { context } = unpackReport(row.report);
+    if (!context) continue;
+    if (!merged.projectId && context.projectId) {
+      merged.projectId = context.projectId;
+      merged.projectLabel = context.projectLabel;
+    }
+    if (!merged.subcontractorId && context.subcontractorId) {
+      merged.subcontractorId = context.subcontractorId;
+      merged.subcontractorLabel = context.subcontractorLabel;
+    }
+  }
+  return Object.keys(merged).length ? merged : null;
 }
 
 export async function listThreads(userId: string, companyId: string) {
@@ -75,7 +110,12 @@ export async function createThread(userId: string, companyId: string, firstQuest
   });
 }
 
-export async function saveExchange(threadId: string, question: string, reply: { content: string; report: HelpReport | null }) {
+export async function saveExchange(threadId: string, question: string, reply: { content: string; report: HelpReport | null; context?: HelpThreadContext | null }) {
+  const packed = reply.report
+    ? { ...reply.report, ...(reply.context ? { context: reply.context } : {}) }
+    : reply.context
+      ? { title: "", context: reply.context }
+      : null;
   const now = new Date();
   const [, assistant] = await prisma.$transaction([
     prisma.helpAssistantMessage.create({ data: { threadId, role: "user", content: question, createdAt: now } }),
@@ -84,7 +124,7 @@ export async function saveExchange(threadId: string, question: string, reply: { 
         threadId,
         role: "assistant",
         content: reply.content,
-        report: reply.report ? (reply.report as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+        report: packed ? (packed as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         createdAt: new Date(now.getTime() + 1),
       },
       select: { id: true, role: true, content: true, report: true, createdAt: true },

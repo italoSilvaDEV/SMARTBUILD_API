@@ -1,6 +1,8 @@
 import { AIAssistantController } from "../../controllers/aiAssistant/AIAssistantController";
 import { prisma } from "../../utils/prisma";
 import { HelpSkill, HelpTool } from "../types";
+import { canSeeProject, invoiceScope, NO_PROJECT_ACCESS } from "../projectScope";
+import { buildAutoReport } from "../reportAssembly";
 import { summarizeInvoices } from "./receivables";
 
 /**
@@ -16,7 +18,55 @@ const legacy = new AIAssistantController() as unknown as {
   executeTool(toolName: string, rawArgs: string, companyId: string, history: unknown[], question: string): Promise<{ output: unknown }>;
 };
 
-const MAX_OUTPUT_CHARS = 14000;
+/**
+ * Executa uma consulta do módulo antigo e devolve a saída já corrigida (faturas void etc.),
+ * sem anotar valores. Usada pelas skills de relatório completo e cruzamento de dados.
+ */
+export async function runLegacyQuery(toolName: string, args: Record<string, unknown>, companyId: string): Promise<any> {
+  const result = await legacy.executeTool(toolName, JSON.stringify(args ?? {}), companyId, [], "");
+  return reconcileVsEstimate(toolName, fixLegacyOutput(toolName, result?.output), companyId);
+}
+
+/**
+ * O project_vs_estimate antigo calcula a mão de obra por outro caminho e dá custo menor que
+ * project_cost_breakdown, project_margin_analysis e os rankings (que concordam entre si) em boa parte dos
+ * projetos. Para os números não se contradizerem, o custo dele passa a vir do project_cost_breakdown.
+ */
+async function reconcileVsEstimate(toolName: string, output: any, companyId: string): Promise<any> {
+  if (toolName !== "project_vs_estimate" || !output?.projectId || output.error) return output;
+  try {
+    const result = await legacy.executeTool("project_cost_breakdown", JSON.stringify({ projectId: output.projectId }), companyId, [], "");
+    const totals = (result?.output as any)?.totals;
+    if (!totals || typeof totals.totalCost !== "number") return output;
+    const sold = Number(output.soldValue ?? 0);
+    const estimate = Number(output.latestEstimate?.totalAmount ?? 0);
+    return {
+      ...output,
+      costs: { materialCost: totals.materialCost, laborCost: totals.laborCost, totalCost: totals.totalCost },
+      deltas: { soldVsEstimate: sold - estimate, soldVsCost: sold - totals.totalCost, estimateVsCost: estimate - totals.totalCost },
+      costBasis: "mesmo cálculo de project_cost_breakdown e project_margin_analysis",
+    };
+  } catch (error) {
+    console.error("[HelpAssistant] reconcileVsEstimate failed:", error);
+    return output;
+  }
+}
+
+/** Quem pode rodar a consulta antiga: mesmas regras de TOOL_ACCESS (consulta fora da lista é negada). */
+export function legacyToolAllowed(toolName: string, ctx: { permissions: string[]; fullProjectAccess: boolean }): boolean {
+  const access = TOOL_ACCESS[toolName];
+  if (!access) return false;
+  if (access.fullProjectAccess && !ctx.fullProjectAccess) return false;
+  return access.permissions.every((permission) => ctx.permissions.includes(permission));
+}
+
+export { annotateMoney };
+
+/** Consultas antigas de fatura/financeiro que somam a empresa toda, sem recorte por usuário. */
+const UNSCOPED_INVOICE_TOOLS = new Set(["list_invoices", "financial_period_comparison"]);
+
+/** Consultas de lista: sem limite informado, trazem até 100 itens. */
+const FULL_LIST_TOOLS = new Set(["list_subcontractors", "subcontractor_summary", "list_clients", "list_invoices"]);
 
 const PROJECTS = ["Projects"];
 const PROJECT_FINANCE = ["Projects", "Invoice"];
@@ -135,17 +185,13 @@ function annotateMoney(value: any, depth = 0): any {
   return result;
 }
 
-function truncateOutput(output: unknown): unknown {
-  const json = JSON.stringify(output ?? null);
-  if (json.length <= MAX_OUTPUT_CHARS) return output;
-  return { truncated: true, partialJson: json.slice(0, MAX_OUTPUT_CHARS) };
-}
-
 const dataTools: HelpTool[] = legacy
   .getTools()
   .filter((tool) => TOOL_ACCESS[tool.name])
   .map((tool) => {
     const access = TOOL_ACCESS[tool.name];
+    // Consultas de um projeto específico (projectId obrigatório) valem para o operador sem acesso total, só nos projetos dele.
+    const takesProjectId = ((tool.parameters as any)?.required ?? []).includes("projectId");
     return {
       name: tool.name,
       description: tool.description,
@@ -153,10 +199,16 @@ const dataTools: HelpTool[] = legacy
       parameters: tool.parameters,
       requiredPermissions: access.permissions,
       requiresFullProjectAccess: access.fullProjectAccess,
+      projectScoped: takesProjectId,
+      requiresFullInvoiceAccess: UNSCOPED_INVOICE_TOOLS.has(tool.name),
+      buildReport: (args, output) => buildAutoReport(tool.name, args, output),
       async run(args, ctx) {
         if (!ctx.companyId) return { error: "no active company" };
-        const result = await legacy.executeTool(tool.name, JSON.stringify(args ?? {}), ctx.companyId, [], "");
-        return truncateOutput(annotateMoney(fixLegacyOutput(tool.name, result?.output)));
+        if (takesProjectId && !canSeeProject(ctx, args.projectId)) return NO_PROJECT_ACCESS;
+        // Listas completas por padrão: o modelo costuma esquecer de pedir o limite e a consulta antiga devolve só ~15.
+        const effectiveArgs = FULL_LIST_TOOLS.has(tool.name) && args.limit === undefined ? { ...args, limit: 100 } : args;
+        const result = await legacy.executeTool(tool.name, JSON.stringify(effectiveArgs ?? {}), ctx.companyId, [], "");
+        return annotateMoney(await reconcileVsEstimate(tool.name, fixLegacyOutput(tool.name, result?.output), ctx.companyId));
       },
     };
   });
@@ -177,7 +229,7 @@ const companyOverviewTool: HelpTool = {
       prisma.project.count({ where: { company_id: ctx.companyId, status_project: { in: ACTIVE_PROJECT_STATUSES } } }),
       prisma.project.count({ where: { company_id: ctx.companyId } }),
       prisma.client.count({ where: { company_id: ctx.companyId } }),
-      summarizeInvoices(ctx.companyId),
+      summarizeInvoices(ctx.companyId, invoiceScope(ctx)),
       legacy.executeTool("top_spending_projects", JSON.stringify({ limit: 3 }), ctx.companyId, [], ""),
     ]);
     return annotateMoney({
@@ -204,6 +256,9 @@ Você tem ferramentas de consulta aos dados reais da empresa ativa do usuário. 
 - "Quem ganha mais" significa pagamento/custo de mão de obra pelos time cards (não há folha de pagamento separada).
 - Converta períodos relativos nos argumentos: "este mês" → period="thisMonth", "mês passado" → "lastMonth", "esta semana" → "thisWeek", "semana passada" → "lastWeek", "últimos 30 dias" → "last30Days", "este ano" → "thisYear".
 - Para comparar períodos, prefira financial_period_comparison.
+- "Quais/quem são" (subcontractors, clientes, projetos) pede os NOMES: liste-os (list_subcontractors, list_clients, list_projects), não responda só com a contagem e o maior item.
+- "Último/mais recente/quando foi" pede ordenar por DATA, nunca por custo: busque os lançamentos (subcontractor_cost_entries para subcontractors, time cards para funcionários) e use o de data mais recente. Não use rankings de custo para isso. Se a pergunta não disser se é subcontractor ou funcionário, diga qual considerou e ofereça o outro em uma frase.
+- Se o pedido for ambíguo mas tiver um padrão razoável (ex.: "PDF com todos os custos" = empresa toda), faça com o padrão em vez de perguntar.
 - Só existem as ferramentas que você recebeu. Se o usuário pedir um dado para o qual você não tem ferramenta, diga que o perfil dele não tem acesso a essa informação pelo assistente e indique a tela do sistema.
 `.trim(),
   isAvailable: (ctx) => Boolean(ctx.companyId),

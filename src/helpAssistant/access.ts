@@ -8,14 +8,17 @@ export interface HelpAccess {
   companyName: string | null;
   permissions: string[];
   fullProjectAccess: boolean;
+  visibleProjectIds: string[] | null;
+  invoiceAccessAll: boolean;
 }
 
-const FULL_ACCESS_OFFICES = new Set(["owner", "administrator"]);
+/** Mesma regra do app (userHasFullAccess): só o cargo Owner tem acesso total sem a flag do usuário. */
+const isOwner = (name: string | null) => String(name ?? "").trim().toLowerCase() === "owner";
 
 /**
  * Resolve, no servidor, a empresa e as permissões do usuário.
  * Segue a mesma regra do login: permissões do plano da empresa filtradas
- * pelas do cargo (Owner/Administrator recebem todas as do plano).
+ * pelas do cargo (Owner/Administrator recebem todas as do plano (permissões de tela; o acesso a todos os projetos/faturas segue userHasFullAccess)).
  * Retorna null se o usuário não pertence à empresa.
  */
 export async function resolveHelpAccess(userId: string, requestedCompanyId: string | null): Promise<HelpAccess | null> {
@@ -25,6 +28,7 @@ export async function resolveHelpAccess(userId: string, requestedCompanyId: stri
       name: true,
       company_id: true,
       projectEditAll: true,
+      invoiceEditAll: true,
       office: { select: { name: true, userPermissions: { select: { permission: { select: { description: true } } } } } },
     },
   });
@@ -63,12 +67,26 @@ export async function resolveHelpAccess(userId: string, requestedCompanyId: stri
   const officePermissions = office?.userPermissions.map((item) => item.permission.description) ?? [];
   const officeName = office?.name ?? null;
 
+  const fullProjectAccess = isOwner(officeName) || user.projectEditAll === true;
+  const invoiceAccessAll = isOwner(officeName) || user.invoiceEditAll === true;
+  // Mesma regra da tela Projects: sem acesso total, só projetos em que é vendedor ou gerente.
+  const visibleProjectIds = fullProjectAccess
+    ? null
+    : (
+        await prisma.project.findMany({
+          where: { company_id: companyId, OR: [{ seller_user_id: userId }, { project_manager_id: userId }] },
+          select: { id: true },
+        })
+      ).map((project) => project.id);
+
   return {
     userName: user.name,
     officeName,
     companyId,
     companyName: company.name,
     permissions: resolveEffectivePermissions(planPermissions, officePermissions, officeName),
-    fullProjectAccess: FULL_ACCESS_OFFICES.has(String(officeName ?? "").trim().toLowerCase()) || user.projectEditAll === true,
+    fullProjectAccess,
+    visibleProjectIds,
+    invoiceAccessAll,
   };
 }

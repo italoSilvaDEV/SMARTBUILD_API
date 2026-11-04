@@ -34,7 +34,8 @@ export const reportingSkill: HelpSkill = {
   id: "reporting",
   description: "Monta relatórios visuais a partir dos dados já consultados.",
   instructions: `
-Quando o usuário pedir relatório, tabela, gráfico, ranking ou exportação (PDF, CSV, Excel), consulte os dados e então chame render_report com o resultado.
+Se existir uma ferramenta dedicada de relatório (company_full_report, project_full_report, compare_projects, labor_period_report, labor_period_comparison, subcontractor_full_report, estimates_vs_actual), use SOMENTE ela e NÃO chame render_report: o relatório já é anexado automaticamente. Use render_report apenas para composições que nenhuma ferramenta cobre.
+Quando o usuário pedir relatório, tabela, gráfico, ranking ou exportação (PDF, CSV, Excel) sem ferramenta dedicada, consulte os dados e então chame render_report com o resultado.
 - Use só números vindos das ferramentas de dados. Em chartData use os números brutos exatamente como vieram; na tabela e nas métricas use os textos "Usd" já formatados.
 - chartData: lista de objetos com uma chave de rótulo ("label") e uma ou mais chaves numéricas.
 - Depois de chamar render_report, responda com um resumo curto dos principais números. A tabela e o gráfico aparecem logo abaixo da sua resposta, com botões "Excel" e "PDF" para exportar; não pergunte se o usuário quer exportar.

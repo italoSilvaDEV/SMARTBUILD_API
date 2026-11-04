@@ -86,13 +86,14 @@ export class HelpAssistantController {
         language: SUPPORTED_LANGUAGES.has(language) ? language : "pt",
       };
 
-      const reply = await service.reply([...previous, { role: "user", content: question }], ctx);
+      const threadContext = existing ? await history.getThreadContext(existing.id) : null;
+      const reply = await service.reply([...previous, { role: "user", content: question }], ctx, threadContext);
       if (!reply.content && !reply.report) {
         return res.status(502).json({ error: "Empty assistant response" });
       }
 
       const thread = existing ?? (await history.createThread(userId, access.companyId, question));
-      const message = await history.saveExchange(thread.id, question, { content: reply.content, report: reply.report });
+      const message = await history.saveExchange(thread.id, question, { content: reply.content, report: reply.report, context: reply.context });
 
       return res.json({
         thread,

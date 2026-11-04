@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
+import { projectIdFilter } from "../projectScope";
 import { HelpSkill, HelpTool } from "../types";
 
 /**
@@ -43,11 +44,12 @@ const tools: HelpTool[] = [
     readOnly: true,
     requiredPermissions: ["Projects"],
     requiresFullProjectAccess: true,
+    projectScoped: true,
     parameters: { type: "object", properties: {} },
     async run(_args, ctx) {
       const rows = await prisma.project.groupBy({
         by: ["status_project"],
-        where: { company_id: ctx.companyId! },
+        where: { company_id: ctx.companyId!, ...projectIdFilter(ctx) },
         _count: { _all: true },
       });
       const byStatus = Object.fromEntries(rows.map((row) => [row.status_project, row._count._all]));
@@ -66,6 +68,7 @@ const tools: HelpTool[] = [
     readOnly: true,
     requiredPermissions: ["Projects"],
     requiresFullProjectAccess: true,
+    projectScoped: true,
     parameters: {
       type: "object",
       properties: {
@@ -81,6 +84,7 @@ const tools: HelpTool[] = [
       const contract = Number(search);
       const where: Prisma.ProjectWhereInput = {
         company_id: ctx.companyId!,
+        ...projectIdFilter(ctx),
         ...(statuses ? { status_project: { in: statuses } } : {}),
         ...(search
           ? {
@@ -190,7 +194,7 @@ const tools: HelpTool[] = [
       const start = typeof args.startDate === "string" ? new Date(args.startDate) : null;
       const end = typeof args.endDate === "string" ? new Date(`${args.endDate}T23:59:59.999`) : null;
       const where: Prisma.EstimateWhereInput = {
-        project: { company_id: ctx.companyId! },
+        project: { company_id: ctx.companyId!, ...projectIdFilter(ctx) },
         ...(statuses.length ? { status: { in: statuses } } : {}),
         ...(start || end
           ? { date_creation: { ...(start && !Number.isNaN(start.getTime()) ? { gte: start } : {}), ...(end && !Number.isNaN(end.getTime()) ? { lte: end } : {}) } }
@@ -229,6 +233,82 @@ const tools: HelpTool[] = [
     },
   },
 ];
+
+const NATIVE_REPORTS: Record<string, NonNullable<HelpTool["buildReport"]>> = {
+  list_projects: (_args, output) =>
+    output?.items?.length
+      ? {
+          title: "Projects",
+          description: `${output.total ?? output.items.length} projects`,
+          table: {
+            columns: [
+              { key: "contractNumber", label: "Number" },
+              { key: "client", label: "Client" },
+              { key: "address", label: "Address" },
+              { key: "status", label: "Status" },
+              { key: "priceUsd", label: "Value" },
+            ],
+            rows: output.items.map((item: any) => ({
+              contractNumber: item.contractNumber ?? null,
+              client: item.client ?? null,
+              address: item.address ?? null,
+              status: item.status ?? null,
+              priceUsd: item.priceUsd ?? null,
+            })),
+          },
+        }
+      : null,
+  list_clients: (_args, output) =>
+    output?.items?.length
+      ? {
+          title: "Clients",
+          description: `${output.total ?? output.items.length} clients`,
+          table: {
+            columns: [
+              { key: "name", label: "Client" },
+              { key: "email", label: "Email" },
+              { key: "phone", label: "Phone" },
+              { key: "cityAndState", label: "Location" },
+              { key: "projectCount", label: "Projects" },
+            ],
+            rows: output.items.map((item: any) => ({
+              name: item.name ?? null,
+              email: item.email ?? null,
+              phone: item.phone ?? null,
+              cityAndState: item.cityAndState ?? null,
+              projectCount: item.projectCount ?? 0,
+            })),
+          },
+        }
+      : null,
+  estimate_summary: (_args, output) =>
+    output?.recent?.length
+      ? {
+          title: "Estimates",
+          description: `${output.totalEstimates ?? output.recent.length} estimates`,
+          table: {
+            columns: [
+              { key: "number", label: "Estimate" },
+              { key: "projectAddress", label: "Project" },
+              { key: "client", label: "Client" },
+              { key: "status", label: "Status" },
+              { key: "totalUsd", label: "Total" },
+            ],
+            rows: output.recent.map((item: any) => ({
+              number: item.number ?? null,
+              projectAddress: item.projectAddress ?? null,
+              client: item.client ?? null,
+              status: item.status ?? null,
+              totalUsd: item.totalUsd ?? null,
+            })),
+          },
+        }
+      : null,
+};
+for (const tool of tools) {
+  const build = NATIVE_REPORTS[tool.name];
+  if (build) tool.buildReport = build;
+}
 
 export const projectsAndEstimatesSkill: HelpSkill = {
   id: "projects-and-estimates",
