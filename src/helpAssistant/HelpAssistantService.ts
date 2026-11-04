@@ -6,7 +6,7 @@ import { contextFromRoute, describeContext, extractContext, pickFinalReport } fr
 import { getActiveSkills, isToolAllowed } from "./skills";
 import { AUTO_REPORT_KEY, HelpAssistantContext, HelpAssistantReply, HelpChatMessage, HelpReport, HelpSource, HelpThreadContext, HelpTool } from "./types";
 
-const MODEL = "gpt-5-mini";
+const MODEL = "gpt-6-luna";
 const REQUEST_TIMEOUT_MS = 90000;
 const MAX_TOOL_ROUNDS = 8;
 
