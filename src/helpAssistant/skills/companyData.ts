@@ -1,6 +1,7 @@
 import { AIAssistantController } from "../../controllers/aiAssistant/AIAssistantController";
 import { prisma } from "../../utils/prisma";
 import { HelpSkill, HelpTool } from "../types";
+import { buildAutoReport } from "../reportAssembly";
 import { summarizeInvoices } from "./receivables";
 
 /**
@@ -16,7 +17,24 @@ const legacy = new AIAssistantController() as unknown as {
   executeTool(toolName: string, rawArgs: string, companyId: string, history: unknown[], question: string): Promise<{ output: unknown }>;
 };
 
-const MAX_OUTPUT_CHARS = 14000;
+/**
+ * Executa uma consulta do módulo antigo e devolve a saída já corrigida (faturas void etc.),
+ * sem anotar valores. Usada pelas skills de relatório completo e cruzamento de dados.
+ */
+export async function runLegacyQuery(toolName: string, args: Record<string, unknown>, companyId: string): Promise<any> {
+  const result = await legacy.executeTool(toolName, JSON.stringify(args ?? {}), companyId, [], "");
+  return fixLegacyOutput(toolName, result?.output);
+}
+
+/** Quem pode rodar a consulta antiga: mesmas regras de TOOL_ACCESS (consulta fora da lista é negada). */
+export function legacyToolAllowed(toolName: string, ctx: { permissions: string[]; fullProjectAccess: boolean }): boolean {
+  const access = TOOL_ACCESS[toolName];
+  if (!access) return false;
+  if (access.fullProjectAccess && !ctx.fullProjectAccess) return false;
+  return access.permissions.every((permission) => ctx.permissions.includes(permission));
+}
+
+export { annotateMoney };
 
 const PROJECTS = ["Projects"];
 const PROJECT_FINANCE = ["Projects", "Invoice"];
@@ -135,12 +153,6 @@ function annotateMoney(value: any, depth = 0): any {
   return result;
 }
 
-function truncateOutput(output: unknown): unknown {
-  const json = JSON.stringify(output ?? null);
-  if (json.length <= MAX_OUTPUT_CHARS) return output;
-  return { truncated: true, partialJson: json.slice(0, MAX_OUTPUT_CHARS) };
-}
-
 const dataTools: HelpTool[] = legacy
   .getTools()
   .filter((tool) => TOOL_ACCESS[tool.name])
@@ -153,10 +165,11 @@ const dataTools: HelpTool[] = legacy
       parameters: tool.parameters,
       requiredPermissions: access.permissions,
       requiresFullProjectAccess: access.fullProjectAccess,
+      buildReport: (args, output) => buildAutoReport(tool.name, args, output),
       async run(args, ctx) {
         if (!ctx.companyId) return { error: "no active company" };
         const result = await legacy.executeTool(tool.name, JSON.stringify(args ?? {}), ctx.companyId, [], "");
-        return truncateOutput(annotateMoney(fixLegacyOutput(tool.name, result?.output)));
+        return annotateMoney(fixLegacyOutput(tool.name, result?.output));
       },
     };
   });
@@ -204,6 +217,9 @@ Você tem ferramentas de consulta aos dados reais da empresa ativa do usuário. 
 - "Quem ganha mais" significa pagamento/custo de mão de obra pelos time cards (não há folha de pagamento separada).
 - Converta períodos relativos nos argumentos: "este mês" → period="thisMonth", "mês passado" → "lastMonth", "esta semana" → "thisWeek", "semana passada" → "lastWeek", "últimos 30 dias" → "last30Days", "este ano" → "thisYear".
 - Para comparar períodos, prefira financial_period_comparison.
+- "Quais/quem são" (subcontractors, clientes, projetos) pede os NOMES: liste-os (list_subcontractors, list_clients, list_projects), não responda só com a contagem e o maior item.
+- "Último/mais recente/quando foi" pede ordenar por DATA, nunca por custo: busque os lançamentos (subcontractor_cost_entries para subcontractors, time cards para funcionários) e use o de data mais recente. Não use rankings de custo para isso. Se a pergunta não disser se é subcontractor ou funcionário, diga qual considerou e ofereça o outro em uma frase.
+- Se o pedido for ambíguo mas tiver um padrão razoável (ex.: "PDF com todos os custos" = empresa toda), faça com o padrão em vez de perguntar.
 - Só existem as ferramentas que você recebeu. Se o usuário pedir um dado para o qual você não tem ferramenta, diga que o perfil dele não tem acesso a essa informação pelo assistente e indique a tela do sistema.
 `.trim(),
   isAvailable: (ctx) => Boolean(ctx.companyId),

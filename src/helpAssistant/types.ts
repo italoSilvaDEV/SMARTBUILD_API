@@ -32,6 +32,16 @@ export interface HelpReport {
     columns: { key: string; label: string }[];
     rows: Record<string, string | number | boolean | null>[];
   } | null;
+  /** Relatório completo: cada seção é um relatório próprio (sem seções aninhadas). */
+  sections?: HelpReport[];
+}
+
+/** Entidades citadas na conversa, usadas para entender "detalhe esse projeto". */
+export interface HelpThreadContext {
+  projectId?: string;
+  projectLabel?: string;
+  subcontractorId?: string;
+  subcontractorLabel?: string;
 }
 
 /**
@@ -51,8 +61,13 @@ export interface HelpTool {
   requiresFullProjectAccess?: boolean;
   /** Quando true, o retorno `{ report }` vira o relatório da resposta. */
   producesReport?: boolean;
+  /** Monta o relatório padrão (tabela/gráfico) a partir do retorno da tool; o servidor o anexa à resposta. */
+  buildReport?: (args: Record<string, unknown>, output: any) => HelpReport | null;
   run: (args: Record<string, unknown>, ctx: HelpAssistantContext) => Promise<unknown>;
 }
+
+/** Marca no retorno de uma tool: relatório que o servidor anexa à resposta sem passar pelo modelo. */
+export const AUTO_REPORT_KEY = "__report";
 
 export interface HelpSource {
   title: string;
@@ -86,4 +101,6 @@ export interface HelpAssistantReply {
   toolsUsed: string[];
   sources: HelpSource[];
   report: HelpReport | null;
+  /** Projeto/subcontractor mais recentes tocados pelas tools, para os próximos turnos. */
+  context: HelpThreadContext | null;
 }

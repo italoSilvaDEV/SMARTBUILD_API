@@ -1,12 +1,14 @@
 import { detectLanguage } from "./language";
 import { openai } from "./openaiClient";
+import { compactForModel } from "./compact";
 import { buildSystemPrompt } from "./prompts";
+import { contextFromRoute, describeContext, extractContext, pickFinalReport } from "./reportAssembly";
 import { getActiveSkills, isToolAllowed } from "./skills";
-import { HelpAssistantContext, HelpAssistantReply, HelpChatMessage, HelpReport, HelpSource, HelpTool } from "./types";
+import { AUTO_REPORT_KEY, HelpAssistantContext, HelpAssistantReply, HelpChatMessage, HelpReport, HelpSource, HelpThreadContext, HelpTool } from "./types";
 
 const MODEL = "gpt-5-mini";
 const REQUEST_TIMEOUT_MS = 90000;
-const MAX_TOOL_ROUNDS = 6;
+const MAX_TOOL_ROUNDS = 8;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -103,20 +105,48 @@ function buildRetrievalQuery(history: HelpChatMessage[]): string {
   return previous && last.length < 80 ? `${previous}\n${last}` : last;
 }
 
+/** O usuário pediu relatório, tabela, lista, ranking, gráfico, comparação ou exportação? */
+const REPORT_INTENT =
+  /\b(relatorio|report|informe|tabela|tabla|table|grafico|grafica|chart|graph|lista|listar|list|ranking|top\s*\d+|pdf|excel|csv|planilha|spreadsheet|exportar|export|compar\w*|completo|full|todos|todas|all)\b/;
+
+export function asksForReport(question: string): boolean {
+  const normalized = question.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return REPORT_INTENT.test(normalized);
+}
+
+function safeBuildReport(tool: HelpTool, args: Record<string, unknown>, output: unknown): HelpReport | null {
+  if (!tool.buildReport) return null;
+  try {
+    const report = tool.buildReport(args, output);
+    return report && (report.table?.rows?.length || report.chartData?.length || report.metrics?.length) ? report : null;
+  } catch (error) {
+    console.error(`[HelpAssistant] buildReport failed for ${tool.name}:`, error);
+    return null;
+  }
+}
+
 export class HelpAssistantService {
   isConfigured() {
     return Boolean(openai);
   }
 
-  async reply(history: HelpChatMessage[], requestCtx: HelpAssistantContext): Promise<HelpAssistantReply> {
+  async reply(
+    history: HelpChatMessage[],
+    requestCtx: HelpAssistantContext,
+    threadContext: HelpThreadContext | null = null
+  ): Promise<HelpAssistantReply> {
     if (!openai) {
       throw new Error("OPENAI_KEY is not configured");
     }
 
     // O idioma da resposta segue a mensagem; o da interface é só o padrão.
     const lastQuestion = [...history].reverse().find((message) => message.role === "user")?.content ?? "";
-    const ctx: HelpAssistantContext = { ...requestCtx, language: detectLanguage(lastQuestion) ?? requestCtx.language };
+    // Mensagem curta ("all", "sim") não revela o idioma: vale o da última mensagem em que ele ficou claro.
+    const userMessages = history.filter((message) => message.role === "user").map((message) => message.content);
+    const detected = [...userMessages].reverse().map((text) => detectLanguage(text)).find(Boolean);
+    const ctx: HelpAssistantContext = { ...requestCtx, language: detected ?? requestCtx.language };
 
+    const wantsReport = asksForReport(lastQuestion);
     const skills = getActiveSkills(ctx);
     const query = buildRetrievalQuery(history);
 
@@ -143,10 +173,24 @@ export class HelpAssistantService {
       strict: false,
     }));
 
-    const instructions = buildSystemPrompt(ctx, skills, dynamicContext);
+    // Na tela de um projeto/subcontractor, esse é o foco padrão da conversa.
+    const focus: HelpThreadContext = { ...(threadContext ?? {}), ...contextFromRoute(ctx.route) };
+    const instructions = buildSystemPrompt(ctx, skills, dynamicContext, describeContext(Object.keys(focus).length ? focus : null));
     const input: any[] = history.map((message) => ({ role: message.role, content: message.content }));
     const toolsUsed: string[] = [];
-    let report: HelpReport | null = null;
+    let customReport: HelpReport | null = null;
+    const autoReports: HelpReport[] = [];
+    let touched: HelpThreadContext = {};
+    const finish = (content: string): HelpAssistantReply => {
+      const merged = { ...(threadContext ?? {}), ...touched };
+      return {
+        content,
+        toolsUsed,
+        sources,
+        report: pickFinalReport({ custom: customReport, auto: autoReports, language: ctx.language }),
+        context: Object.keys(merged).length ? merged : null,
+      };
+    };
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
       const isLastRound = round === MAX_TOOL_ROUNDS;
@@ -167,7 +211,7 @@ export class HelpAssistantService {
       );
 
       if (!calls.length) {
-        return { content: sanitizeAnswer(fixMenuPaths(extractText(response))), toolsUsed, sources, report };
+        return finish(sanitizeAnswer(fixMenuPaths(extractText(response))));
       }
 
       input.push(...response.output);
@@ -179,8 +223,20 @@ export class HelpAssistantService {
           output = tool ? await tool.run(args, ctx) : { error: "unknown tool" };
           if (tool) toolsUsed.push(tool.name);
           if (tool?.producesReport && (output as any)?.report) {
-            report = (output as any).report as HelpReport;
+            customReport = (output as any).report as HelpReport;
             output = { ok: true, shownToUser: true };
+          } else if (tool) {
+            const embedded = (output as any)?.[AUTO_REPORT_KEY] as HelpReport | undefined;
+            if (embedded) {
+              autoReports.push(embedded);
+              output = (output as any).output;
+            } else {
+              // Tabela/gráfico padrão só quando o usuário pediu; resposta simples não leva cartão de relatório.
+              const auto = wantsReport ? safeBuildReport(tool, args, output) : null;
+              if (auto) autoReports.push(auto);
+            }
+            touched = { ...touched, ...extractContext(args, output) };
+            output = compactForModel(output);
           }
         } catch (error) {
           console.error(`[HelpAssistant] tool ${call.name} failed:`, error);
@@ -190,6 +246,6 @@ export class HelpAssistantService {
       }
     }
 
-    return { content: "", toolsUsed, sources, report };
+    return finish("");
   }
 }

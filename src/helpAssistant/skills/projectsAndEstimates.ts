@@ -230,6 +230,82 @@ const tools: HelpTool[] = [
   },
 ];
 
+const NATIVE_REPORTS: Record<string, NonNullable<HelpTool["buildReport"]>> = {
+  list_projects: (_args, output) =>
+    output?.items?.length
+      ? {
+          title: "Projects",
+          description: `${output.total ?? output.items.length} projects`,
+          table: {
+            columns: [
+              { key: "contractNumber", label: "Number" },
+              { key: "client", label: "Client" },
+              { key: "address", label: "Address" },
+              { key: "status", label: "Status" },
+              { key: "priceUsd", label: "Value" },
+            ],
+            rows: output.items.map((item: any) => ({
+              contractNumber: item.contractNumber ?? null,
+              client: item.client ?? null,
+              address: item.address ?? null,
+              status: item.status ?? null,
+              priceUsd: item.priceUsd ?? null,
+            })),
+          },
+        }
+      : null,
+  list_clients: (_args, output) =>
+    output?.items?.length
+      ? {
+          title: "Clients",
+          description: `${output.total ?? output.items.length} clients`,
+          table: {
+            columns: [
+              { key: "name", label: "Client" },
+              { key: "email", label: "Email" },
+              { key: "phone", label: "Phone" },
+              { key: "cityAndState", label: "Location" },
+              { key: "projectCount", label: "Projects" },
+            ],
+            rows: output.items.map((item: any) => ({
+              name: item.name ?? null,
+              email: item.email ?? null,
+              phone: item.phone ?? null,
+              cityAndState: item.cityAndState ?? null,
+              projectCount: item.projectCount ?? 0,
+            })),
+          },
+        }
+      : null,
+  estimate_summary: (_args, output) =>
+    output?.recent?.length
+      ? {
+          title: "Estimates",
+          description: `${output.totalEstimates ?? output.recent.length} estimates`,
+          table: {
+            columns: [
+              { key: "number", label: "Estimate" },
+              { key: "projectAddress", label: "Project" },
+              { key: "client", label: "Client" },
+              { key: "status", label: "Status" },
+              { key: "totalUsd", label: "Total" },
+            ],
+            rows: output.recent.map((item: any) => ({
+              number: item.number ?? null,
+              projectAddress: item.projectAddress ?? null,
+              client: item.client ?? null,
+              status: item.status ?? null,
+              totalUsd: item.totalUsd ?? null,
+            })),
+          },
+        }
+      : null,
+};
+for (const tool of tools) {
+  const build = NATIVE_REPORTS[tool.name];
+  if (build) tool.buildReport = build;
+}
+
 export const projectsAndEstimatesSkill: HelpSkill = {
   id: "projects-and-estimates",
   description: "Contagens e buscas exatas de projetos e estimates da empresa.",
