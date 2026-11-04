@@ -19,7 +19,23 @@ import { receivablesSkill, summarizeInvoices } from "./receivables";
 const PROJECT_FINANCE = ["Projects", "Invoice"];
 const PERIODS = ["thisWeek", "lastWeek", "thisMonth", "lastMonth", "last30Days", "thisYear"];
 const ACTIVE_STATUSES = ["Pre-Start", "In Progress", "Final walkthrough"];
-const MAX_PROJECTS = 12;
+/** Teto de projetos por relatório. As consultas por projeto são rápidas (73 projetos x 2 consultas < 1s), então cobre a empresa toda. */
+const MAX_PROJECTS = 500;
+const POOL_SIZE = 8;
+
+/** Executa fn sobre os itens com no máximo `size` em paralelo, preservando a ordem. */
+async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+  return results;
+}
 
 type Cell = string | number | null;
 
@@ -355,6 +371,26 @@ const METRIC_COLUMNS: Record<Metric, { columns: { key: string; label: string }[]
   },
 };
 
+const MONEY_KEYS = new Set(["materials", "employees", "subs", "totalCost", "sold", "margin", "balanceDue", "openAmount", "overdueAmount", "latestEstimate", "soldVsEstimate", "estimateVsCost", "coApproved", "coPending"]);
+
+/** Valores numéricos brutos por coluna, usados para ordenar e somar (as colunas da tabela são texto formatado). */
+const METRIC_RAW: Record<Metric, (o: any) => Record<string, number>> = {
+  cost: (o) => ({ materials: num(o?.totals?.materialCost), employees: num(o?.totals?.internalLaborCost), subs: num(o?.totals?.subcontractorCost), totalCost: num(o?.totals?.totalCost) }),
+  margin: (o) => ({ sold: num(o?.soldValue), margin: num(o?.margin?.value), balanceDue: num(o?.balanceDue) }),
+  invoices: (o) => ({ invoiceCount: num(o?.totals?.invoiceCount), openAmount: num(o?.totals?.openAmount), overdueAmount: num(o?.totals?.overdueAmount) }),
+  estimate: (o) => ({ soldVsEstimate: num(o?.deltas?.soldVsEstimate), estimateVsCost: num(o?.deltas?.estimateVsCost) }),
+  team: (o) => ({ hours: num(o?.totals?.totalHours) }),
+  changeOrders: (o) => ({ coCount: num(o?.totals?.count), coApproved: num(o?.totals?.approvedAmount), coPending: num(o?.totals?.pendingAmount) }),
+  schedule: (o) => ({ openTasks: num(o?.openTasks) }),
+};
+
+/** Coluna usada para ordenar quando o usuário não pede outra (maior primeiro). */
+const DEFAULT_SORT: Record<Metric, string> = { cost: "totalCost", margin: "margin", invoices: "overdueAmount", estimate: "estimateVsCost", team: "hours", changeOrders: "coPending", schedule: "openTasks" };
+
+function formatTotal(key: string, value: number) {
+  return MONEY_KEYS.has(key) ? usd(Math.round(value * 100) / 100) : Math.round(value * 10) / 10;
+}
+
 async function resolveProjects(args: Record<string, unknown>, companyId: string, ctx: { visibleProjectIds: string[] | null }) {
   const ids = Array.isArray(args.projectIds) ? args.projectIds.filter((id): id is string => typeof id === "string").slice(0, MAX_PROJECTS) : [];
   const search = typeof args.search === "string" ? args.search.trim() : "";
@@ -370,7 +406,7 @@ async function resolveProjects(args: Record<string, unknown>, companyId: string,
         status_project: { in: statuses },
         ...(search ? { OR: [{ location: { contains: search } }, { client: { name: { contains: search } } }] } : {}),
       };
-  const limit = Math.min(Math.max(Number(args.limit) || 8, 1), MAX_PROJECTS);
+  const limit = Math.min(Math.max(Number(args.limit) || MAX_PROJECTS, 1), MAX_PROJECTS);
   const [total, projects] = await Promise.all([
     prisma.project.count({ where }),
     prisma.project.findMany({
@@ -385,7 +421,7 @@ async function resolveProjects(args: Record<string, unknown>, companyId: string,
 
 const compareProjects: HelpTool = {
   name: "compare_projects",
-  description: `Cruza dados específicos de VÁRIOS projetos numa tabela só (uma linha por projeto). Escolha os campos em "metrics": ${METRICS.join(", ")}. Selecione os projetos por projectIds, ou por search/status (padrão: projetos ativos). Máx. ${MAX_PROJECTS} projetos.`,
+  description: `Cruza dados específicos de VÁRIOS projetos numa tabela só (uma linha por projeto, com linha de TOTAL). Cobre TODOS os projetos que casam com o filtro (até ${MAX_PROJECTS}), não só alguns. Escolha os campos em "metrics": ${METRICS.join(", ")}. Selecione os projetos por projectIds, ou por search/status (padrão: todos os projetos ativos). sortBy ordena do maior para o menor por uma coluna (ex.: totalCost, margin, overdueAmount); sem sortBy usa a principal da primeira métrica. limit só se o usuário pedir "os N maiores".`,
   readOnly: true,
   requiredPermissions: PROJECT_FINANCE,
   requiresFullProjectAccess: true,
@@ -397,16 +433,18 @@ const compareProjects: HelpTool = {
       search: { type: "string", description: "Endereço ou cliente" },
       status: { type: "array", items: { type: "string" } },
       metrics: { type: "array", items: { type: "string", enum: [...METRICS] } },
-      limit: { type: "number" },
+      sortBy: { type: "string", description: "Coluna: totalCost, materials, employees, subs, sold, margin, balanceDue, openAmount, overdueAmount, estimateVsCost, hours, coPending, openTasks" },
+      limit: { type: "number", description: "Só para 'os N maiores/menores'. Sem isso, traz todos." },
     },
     required: ["metrics"],
   },
   async run(args, ctx) {
     if (!ctx.companyId) return { error: "no active company" };
+    const companyId = ctx.companyId;
     const metrics = (Array.isArray(args.metrics) ? args.metrics : []).filter((m): m is Metric => METRICS.includes(m as Metric));
     if (!metrics.length) return { error: "choose at least one metric", available: METRICS };
 
-    const { total, projects } = await resolveProjects(args, ctx.companyId, ctx);
+    const { total, projects } = await resolveProjects(args, companyId, ctx);
     if (!projects.length) return { error: "no projects found", total: 0 };
 
     const columns = [
@@ -416,36 +454,64 @@ const compareProjects: HelpTool = {
       ...metrics.flatMap((metric) => METRIC_COLUMNS[metric].columns),
     ];
 
-    const rows = await Promise.all(
-      projects.map(async (project) => {
-        const row: Record<string, Cell> = {
-          address: project.location,
-          client: project.client?.name ?? null,
-          status: project.status_project,
-        };
-        await Promise.all(
-          metrics.map(async (metric) => {
-            try {
-              const output = await runLegacyQuery(METRIC_QUERY[metric], { projectId: project.id }, ctx.companyId!);
-              Object.assign(row, METRIC_COLUMNS[metric].pick(output));
-            } catch (error) {
-              console.error(`[HelpAssistant] compare_projects ${metric} failed:`, error);
-              for (const column of METRIC_COLUMNS[metric].columns) row[column.key] = null;
-            }
-          })
-        );
-        return row;
-      })
-    );
+    const entries = await mapPool(projects, POOL_SIZE, async (project) => {
+      const row: Record<string, Cell> = { address: project.location, client: project.client?.name ?? null, status: project.status_project };
+      const raw: Record<string, number> = {};
+      await Promise.all(
+        metrics.map(async (metric) => {
+          try {
+            const output = await runLegacyQuery(METRIC_QUERY[metric], { projectId: project.id }, companyId);
+            Object.assign(row, METRIC_COLUMNS[metric].pick(output));
+            Object.assign(raw, METRIC_RAW[metric](output));
+          } catch (error) {
+            console.error(`[HelpAssistant] compare_projects ${metric} failed:`, error);
+            for (const column of METRIC_COLUMNS[metric].columns) row[column.key] = null;
+          }
+        })
+      );
+      return { row, raw };
+    });
+
+    const requestedSort = typeof args.sortBy === "string" ? args.sortBy : "";
+    const sortKey = requestedSort && entries.some((entry) => requestedSort in entry.raw) ? requestedSort : DEFAULT_SORT[metrics[0]];
+    entries.sort((a, b) => (b.raw[sortKey] ?? Number.NEGATIVE_INFINITY) - (a.raw[sortKey] ?? Number.NEGATIVE_INFINITY));
+    const limit = Number(args.limit) > 0 ? Math.min(Number(args.limit), MAX_PROJECTS) : entries.length;
+    const shown = entries.slice(0, limit);
+
+    // Totais das colunas somáveis.
+    const sums: Record<string, number> = {};
+    for (const entry of shown) for (const [key, value] of Object.entries(entry.raw)) sums[key] = (sums[key] ?? 0) + value;
+    const totalRow: Record<string, Cell> = { address: `TOTAL (${shown.length} projects)`, client: null, status: null };
+    for (const [key, value] of Object.entries(sums)) totalRow[key] = formatTotal(key, value);
+    if (sums.sold && columns.some((column) => column.key === "marginPct")) totalRow.marginPct = `${((sums.margin / sums.sold) * 100).toFixed(1)}%`;
+
+    const totalsMetrics = Object.entries(sums)
+      .filter(([key]) => ["totalCost", "margin", "sold", "overdueAmount", "openAmount", "balanceDue", "materials"].includes(key))
+      .slice(0, 6)
+      .map(([key, value]) => ({ label: columns.find((column) => column.key === key)?.label ?? key, value: String(formatTotal(key, value)) }));
 
     const report: HelpReport = {
       title: "Project Comparison",
-      description: `${rows.length} of ${total} projects - ${metrics.join(", ")}`,
-      table: { columns, rows },
+      description: `${shown.length} of ${total} projects - ${metrics.join(", ")} - sorted by ${sortKey}`,
+      metrics: totalsMetrics,
+      chartMode: sums[sortKey] !== undefined ? "bar" : undefined,
+      chartData: sums[sortKey] !== undefined ? shown.slice(0, 8).map((entry) => ({ label: String(entry.row.address).slice(0, 26), value: Math.round((entry.raw[sortKey] ?? 0) * 100) / 100 })) : undefined,
+      table: { columns, rows: [...shown.map((entry) => entry.row), totalRow] },
     };
+
+    // O modelo recebe só os destaques; a tabela completa já vai anexada ao relatório.
+    const pick = (list: typeof shown) => list.map((entry) => entry.row);
     return {
       [AUTO_REPORT_KEY]: report,
-      output: { totalMatching: total, compared: rows.length, projects: projects.map((p) => ({ projectId: p.id, address: p.location })), rows },
+      output: {
+        totalMatching: total,
+        compared: shown.length,
+        sortedBy: sortKey,
+        totals: totalRow,
+        top: pick(shown.slice(0, 10)),
+        bottom: shown.length > 15 ? pick(shown.slice(-5)) : [],
+        note: "A tabela completa (todos os projetos, com linha de total) foi anexada ao relatório; não liste todas as linhas na resposta, só os destaques.",
+      },
     };
   },
 };
@@ -454,7 +520,7 @@ export const crossProjectSkill: HelpSkill = {
   id: "cross-project",
   description: "Cruza dados específicos de vários projetos em uma tabela.",
   instructions: `
-Para pedidos que misturam dados de vários projetos ("custo e margem dos projetos ativos", "compare faturas em aberto e change orders dos projetos de X"), use compare_projects uma vez, escolhendo em "metrics" só os campos pedidos. Não chame as ferramentas de projeto uma a uma. A tabela cruzada é anexada automaticamente; responda com os destaques (maior, menor, riscos) e avise se há mais projetos do que o limite comparado.
+Para pedidos que misturam dados de vários projetos ("custo e margem dos projetos ativos", "compare faturas em aberto e change orders dos projetos de X"), use compare_projects uma vez, escolhendo em "metrics" só os campos pedidos. Não chame as ferramentas de projeto uma a uma. A tabela cruzada é anexada automaticamente; responda com os destaques (maior, menor, riscos) A ferramenta já cobre TODOS os projetos do filtro e inclui a linha de total; não precisa limitar.
 `.trim(),
   isAvailable: (ctx) => Boolean(ctx.companyId),
   tools: [compareProjects],
@@ -581,7 +647,7 @@ const subcontractorFullReport: HelpTool = {
 const estimatesVsActual: HelpTool = {
   name: "estimates_vs_actual",
   description:
-    "Orçado vs realizado: compara valor vendido, último estimate, faturado e custo de vários projetos (ou de um) em uma tabela, com desvio. Padrão: projetos ativos.",
+    "Orçado vs realizado: compara valor vendido, último estimate, faturado e custo de TODOS os projetos que casam com o filtro (padrão: projetos ativos; até 500) em uma tabela, ordenada pelo maior estouro de orçamento, com linha de total. projectIds/search/status filtram; limit só para 'os N piores'.",
   readOnly: true,
   requiredPermissions: PROJECT_FINANCE,
   requiresFullProjectAccess: true,
@@ -592,46 +658,71 @@ const estimatesVsActual: HelpTool = {
       projectIds: { type: "array", items: { type: "string" } },
       search: { type: "string" },
       status: { type: "array", items: { type: "string" } },
-      limit: { type: "number" },
+      limit: { type: "number", description: "Só para 'os N piores'. Sem isso, traz todos." },
     },
   },
   async run(args, ctx) {
     if (!ctx.companyId) return { error: "no active company" };
-    const { total, projects } = await resolveProjects(args, ctx.companyId, ctx);
+    const companyId = ctx.companyId;
+    const { total, projects } = await resolveProjects(args, companyId, ctx);
     if (!projects.length) return { error: "no projects found", total: 0 };
 
-    const rows = (
-      await Promise.all(
-        projects.map(async (project) => {
-          try {
-            const o = await runLegacyQuery("project_vs_estimate", { projectId: project.id }, ctx.companyId!);
-            const estimate = o?.latestEstimate ? num(o.latestEstimate.totalAmount) : null;
-            const cost = num(o?.costs?.totalCost);
-            const row: Record<string, Cell> = {
-              address: project.location,
-              client: project.client?.name ?? null,
-              status: project.status_project,
-              estimate: estimate === null ? null : usd(estimate),
-              invoiced: usd(num(o?.invoiced)),
-              cost: usd(cost),
-              soldVsCost: usd(num(o?.deltas?.soldVsCost)),
-              estimateVsCost: estimate === null ? null : usd(estimate - cost),
-              overBudget: estimate === null ? null : cost > estimate ? "Yes" : "No",
-            };
-            return row;
-          } catch (error) {
-            console.error("[HelpAssistant] estimates_vs_actual failed:", error);
-            return null;
-          }
-        })
-      )
-    ).filter((row): row is Record<string, Cell> => row !== null);
-    if (!rows.length) return { error: "no data" };
+    const entries = (
+      await mapPool(projects, POOL_SIZE, async (project) => {
+        try {
+          const o = await runLegacyQuery("project_vs_estimate", { projectId: project.id }, companyId);
+          const estimate = o?.latestEstimate ? num(o.latestEstimate.totalAmount) : null;
+          const cost = num(o?.costs?.totalCost);
+          const overrun = estimate === null ? Number.NEGATIVE_INFINITY : cost - estimate;
+          const row: Record<string, Cell> = {
+            address: project.location,
+            client: project.client?.name ?? null,
+            status: project.status_project,
+            estimate: estimate === null ? null : usd(estimate),
+            invoiced: usd(num(o?.invoiced)),
+            cost: usd(cost),
+            soldVsCost: usd(num(o?.deltas?.soldVsCost)),
+            estimateVsCost: estimate === null ? null : usd(estimate - cost),
+            overBudget: estimate === null ? null : cost > estimate ? "Yes" : "No",
+          };
+          return { row, overrun, estimate, invoiced: num(o?.invoiced), cost, soldVsCost: num(o?.deltas?.soldVsCost) };
+        } catch (error) {
+          console.error("[HelpAssistant] estimates_vs_actual failed:", error);
+          return null;
+        }
+      })
+    ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    if (!entries.length) return { error: "no data" };
+
+    // Maior estouro primeiro; projetos sem estimate vão para o fim.
+    entries.sort((a, b) => b.overrun - a.overrun);
+    const limit = Number(args.limit) > 0 ? Math.min(Number(args.limit), MAX_PROJECTS) : entries.length;
+    const shown = entries.slice(0, limit);
+
+    const overBudget = shown.filter((entry) => entry.row.overBudget === "Yes");
+    const withEstimate = shown.filter((entry) => entry.estimate !== null);
+    const sum = (list: typeof shown, pick: (entry: (typeof shown)[number]) => number) => list.reduce((acc, entry) => acc + pick(entry), 0);
+    const totalRow: Record<string, Cell> = {
+      address: `TOTAL (${shown.length} projects)`,
+      client: null,
+      status: null,
+      estimate: usd(sum(withEstimate, (e) => e.estimate ?? 0)),
+      invoiced: usd(sum(shown, (e) => e.invoiced)),
+      cost: usd(sum(shown, (e) => e.cost)),
+      soldVsCost: usd(sum(shown, (e) => e.soldVsCost)),
+      estimateVsCost: usd(sum(withEstimate, (e) => (e.estimate ?? 0) - e.cost)),
+      overBudget: `${overBudget.length} over`,
+    };
 
     const report: HelpReport = {
       title: "Estimate vs Actual",
-      description: `${rows.length} of ${total} projects`,
-      metrics: [{ label: "Over budget", value: String(rows.filter((r) => r.overBudget === "Yes").length), tone: "warning" }],
+      description: `${shown.length} of ${total} projects - ${withEstimate.length} with estimate - worst overrun first`,
+      metrics: [
+        { label: "Over budget", value: `${overBudget.length} of ${withEstimate.length}`, tone: overBudget.length ? "warning" : "success" },
+        { label: "Estimated (projects with estimate)", value: String(totalRow.estimate) },
+        { label: "Actual cost (all)", value: String(totalRow.cost) },
+        { label: "No estimate", value: String(shown.length - withEstimate.length) },
+      ],
       table: {
         columns: [
           { key: "address", label: "Project" },
@@ -644,10 +735,21 @@ const estimatesVsActual: HelpTool = {
           { key: "estimateVsCost", label: "Estimate vs cost" },
           { key: "overBudget", label: "Over budget" },
         ],
-        rows,
+        rows: [...shown.map((entry) => entry.row), totalRow],
       },
     };
-    return { [AUTO_REPORT_KEY]: report, output: { totalMatching: total, compared: rows.length, rows } };
+    return {
+      [AUTO_REPORT_KEY]: report,
+      output: {
+        totalMatching: total,
+        compared: shown.length,
+        withEstimate: withEstimate.length,
+        overBudgetCount: overBudget.length,
+        totals: totalRow,
+        worst: overBudget.slice(0, 10).map((entry) => entry.row),
+        note: "A tabela completa (todos os projetos, com linha de total) foi anexada ao relatório; cite só os destaques. Projetos sem estimate não entram na comparação de orçamento.",
+      },
+    };
   },
 };
 

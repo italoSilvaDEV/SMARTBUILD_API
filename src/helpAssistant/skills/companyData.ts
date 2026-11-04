@@ -24,7 +24,32 @@ const legacy = new AIAssistantController() as unknown as {
  */
 export async function runLegacyQuery(toolName: string, args: Record<string, unknown>, companyId: string): Promise<any> {
   const result = await legacy.executeTool(toolName, JSON.stringify(args ?? {}), companyId, [], "");
-  return fixLegacyOutput(toolName, result?.output);
+  return reconcileVsEstimate(toolName, fixLegacyOutput(toolName, result?.output), companyId);
+}
+
+/**
+ * O project_vs_estimate antigo calcula a mão de obra por outro caminho e dá custo menor que
+ * project_cost_breakdown, project_margin_analysis e os rankings (que concordam entre si) em boa parte dos
+ * projetos. Para os números não se contradizerem, o custo dele passa a vir do project_cost_breakdown.
+ */
+async function reconcileVsEstimate(toolName: string, output: any, companyId: string): Promise<any> {
+  if (toolName !== "project_vs_estimate" || !output?.projectId || output.error) return output;
+  try {
+    const result = await legacy.executeTool("project_cost_breakdown", JSON.stringify({ projectId: output.projectId }), companyId, [], "");
+    const totals = (result?.output as any)?.totals;
+    if (!totals || typeof totals.totalCost !== "number") return output;
+    const sold = Number(output.soldValue ?? 0);
+    const estimate = Number(output.latestEstimate?.totalAmount ?? 0);
+    return {
+      ...output,
+      costs: { materialCost: totals.materialCost, laborCost: totals.laborCost, totalCost: totals.totalCost },
+      deltas: { soldVsEstimate: sold - estimate, soldVsCost: sold - totals.totalCost, estimateVsCost: estimate - totals.totalCost },
+      costBasis: "mesmo cálculo de project_cost_breakdown e project_margin_analysis",
+    };
+  } catch (error) {
+    console.error("[HelpAssistant] reconcileVsEstimate failed:", error);
+    return output;
+  }
 }
 
 /** Quem pode rodar a consulta antiga: mesmas regras de TOOL_ACCESS (consulta fora da lista é negada). */
@@ -183,7 +208,7 @@ const dataTools: HelpTool[] = legacy
         // Listas completas por padrão: o modelo costuma esquecer de pedir o limite e a consulta antiga devolve só ~15.
         const effectiveArgs = FULL_LIST_TOOLS.has(tool.name) && args.limit === undefined ? { ...args, limit: 100 } : args;
         const result = await legacy.executeTool(tool.name, JSON.stringify(effectiveArgs ?? {}), ctx.companyId, [], "");
-        return annotateMoney(fixLegacyOutput(tool.name, result?.output));
+        return annotateMoney(await reconcileVsEstimate(tool.name, fixLegacyOutput(tool.name, result?.output), ctx.companyId));
       },
     };
   });
