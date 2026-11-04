@@ -235,7 +235,7 @@ export class HelpAssistantService {
               const auto = wantsReport ? safeBuildReport(tool, args, output) : null;
               if (auto) autoReports.push(auto);
             }
-            touched = { ...touched, ...extractContext(args, output) };
+            touched = { ...touched, ...extractContext(args, output, tool.name) };
             output = compactForModel(output);
           }
         } catch (error) {

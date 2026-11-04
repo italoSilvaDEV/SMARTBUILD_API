@@ -51,7 +51,10 @@ function textOf(value: unknown): string | undefined {
 }
 
 /** Projeto/subcontractor tocados por uma tool, para entender "esse projeto" nos próximos turnos. */
-export function extractContext(args: Record<string, unknown>, output: any): HelpThreadContext {
+/** Tools que olham UM subcontractor; consultas que varrem vários não definem o foco. */
+const SINGLE_SUBCONTRACTOR_TOOLS = new Set(["get_subcontractor_details", "subcontractor_projects", "subcontractor_full_report"]);
+
+export function extractContext(args: Record<string, unknown>, output: any, toolName = ""): HelpThreadContext {
   const context: HelpThreadContext = {};
 
   const projectId = textOf(args.projectId) ?? textOf(output?.projectId);
@@ -66,7 +69,7 @@ export function extractContext(args: Record<string, unknown>, output: any): Help
     }
   }
 
-  const subcontractorId = textOf(args.subcontractorId) ?? textOf(output?.subcontractor?.id);
+  const subcontractorId = SINGLE_SUBCONTRACTOR_TOOLS.has(toolName) ? textOf(args.subcontractorId) ?? textOf(output?.subcontractor?.id) : undefined;
   if (subcontractorId) {
     context.subcontractorId = subcontractorId;
     context.subcontractorLabel = textOf(output?.subcontractor?.name) ?? textOf(args.subcontractorName);

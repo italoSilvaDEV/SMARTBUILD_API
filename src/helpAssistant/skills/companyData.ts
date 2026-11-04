@@ -40,6 +40,9 @@ export { annotateMoney };
 /** Consultas antigas de fatura/financeiro que somam a empresa toda, sem recorte por usuário. */
 const UNSCOPED_INVOICE_TOOLS = new Set(["list_invoices", "financial_period_comparison"]);
 
+/** Consultas de lista: sem limite informado, trazem até 100 itens. */
+const FULL_LIST_TOOLS = new Set(["list_subcontractors", "subcontractor_summary", "list_clients", "list_invoices"]);
+
 const PROJECTS = ["Projects"];
 const PROJECT_FINANCE = ["Projects", "Invoice"];
 
@@ -177,7 +180,9 @@ const dataTools: HelpTool[] = legacy
       async run(args, ctx) {
         if (!ctx.companyId) return { error: "no active company" };
         if (takesProjectId && !canSeeProject(ctx, args.projectId)) return NO_PROJECT_ACCESS;
-        const result = await legacy.executeTool(tool.name, JSON.stringify(args ?? {}), ctx.companyId, [], "");
+        // Listas completas por padrão: o modelo costuma esquecer de pedir o limite e a consulta antiga devolve só ~15.
+        const effectiveArgs = FULL_LIST_TOOLS.has(tool.name) && args.limit === undefined ? { ...args, limit: 100 } : args;
+        const result = await legacy.executeTool(tool.name, JSON.stringify(effectiveArgs ?? {}), ctx.companyId, [], "");
         return annotateMoney(fixLegacyOutput(tool.name, result?.output));
       },
     };

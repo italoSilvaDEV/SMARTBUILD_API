@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
-import { canSeeProject } from "../projectScope";
+import { canSeeProject, projectIdIn } from "../projectScope";
 import { HelpReport, HelpSkill, HelpTool } from "../types";
 import { jobScheduleSkill } from "./moreModuleSkills";
 
@@ -110,6 +110,124 @@ Para "tem alguém trabalhando agora?", "quem está em campo?", "quem já saiu?",
 `.trim(),
   isAvailable: (ctx) => Boolean(ctx.companyId),
   tools: [whoIsWorkingNow],
+};
+
+
+const subcontractorDirectory: HelpTool = {
+  name: "subcontractor_directory",
+  description:
+    "Cadastro de TODOS os subcontractors da empresa (nome, e-mail, telefone, endereço), sem custos: use para 'quais subcontractors eu tenho', 'contato do subcontractor X'. Retorna o total real e todos os nomes (até 200).",
+  readOnly: true,
+  requiredPermissions: ["Subcontractors"],
+  parameters: { type: "object", properties: { search: { type: "string", description: "Parte do nome ou e-mail" } } },
+  async run(args, ctx) {
+    const search = text(args.search);
+    const where: Prisma.SubcontractorWhereInput = {
+      company_id: ctx.companyId!,
+      ...(search ? { OR: [{ name: { contains: search } }, { email: { contains: search } }] } : {}),
+    };
+    const [total, rows] = await Promise.all([
+      prisma.subcontractor.count({ where }),
+      prisma.subcontractor.findMany({ where, take: 200, orderBy: { name: "asc" }, select: { name: true, email: true, phone: true, address: true } }),
+    ]);
+    return { totalSubcontractors: total, listed: rows.length, items: rows };
+  },
+  buildReport: (_args, output) =>
+    tableReport("Subcontractors", `${output?.totalSubcontractors ?? 0} subcontractors`, [["name", "Name"], ["email", "Email"], ["phone", "Phone"], ["address", "Address"]], (output?.items ?? []) as Record<string, Cell>[]),
+};
+
+export const subcontractorDirectorySkill: HelpSkill = {
+  id: "subcontractor-directory-data",
+  description: "Cadastro completo de subcontractors.",
+  instructions: `
+Para "quais subcontractors eu tenho" ou "liste os subcontractors", use subcontractor_directory e liste TODOS os nomes retornados (não resuma em "alguns"). Para custos e projetos de subcontractors use as outras ferramentas.
+`.trim(),
+  isAvailable: (ctx) => Boolean(ctx.companyId),
+  tools: [subcontractorDirectory],
+};
+
+/* ------------------------------------------------------------------ */
+/* Lançamentos recentes de subcontractors                              */
+/* ------------------------------------------------------------------ */
+
+const recentSubcontractorEntries: HelpTool = {
+  name: "recent_subcontractor_entries",
+  description:
+    "Lançamentos de serviço/custo de subcontractors em ORDEM DE DATA (mais recentes primeiro), de todos os subcontractors e projetos de uma vez. Use para 'qual foi o último subcontratado que fez serviço', 'últimos pagamentos a subcontractors'. sortBy: payment (data de pagamento, padrão) ou created (data em que foi lançado). A data do serviço não serve para ordenar: no cadastro ela é texto livre em formatos misturados.",
+  readOnly: true,
+  requiredPermissions: ["Subcontractors"],
+  requiresFullProjectAccess: true,
+  projectScoped: true,
+  parameters: {
+    type: "object",
+    properties: {
+      sortBy: { type: "string", enum: ["payment", "created"] },
+      subcontractorName: { type: "string" },
+      limit: { type: "number", description: "Padrão 10, máx. 50" },
+    },
+  },
+  async run(args, ctx) {
+    const sortBy = args.sortBy === "created" ? "created" : "payment";
+    const name = text(args.subcontractorName);
+    const limit = clampLimit(args.limit, 10, 50);
+    const rows = await prisma.workedhours.findMany({
+      where: {
+        subcontractor_id: { not: null },
+        project: { is: { company_id: ctx.companyId!, ...(projectIdIn(ctx) ? { id: projectIdIn(ctx) } : {}) } },
+        ...(name ? { subcontractor: { is: { name: { contains: name } } } } : {}),
+      },
+      orderBy: sortBy === "created" ? [{ date_creation: "desc" }] : [{ payment_date: "desc" }, { date_creation: "desc" }],
+      take: limit,
+      select: {
+        start_date: true,
+        end_date: true,
+        payment_date: true,
+        date_creation: true,
+        description: true,
+        type_price: true,
+        amount_of_hours: true,
+        hourly_price: true,
+        fixed_price: true,
+        subcontractor: { select: { name: true } },
+        project: { select: { id: true, location: true, client: { select: { name: true } } } },
+      },
+    });
+    const amount = (row: (typeof rows)[number]) =>
+      row.type_price === "fixed" ? Number(row.fixed_price ?? 0) : Number(row.amount_of_hours ?? 0) * Number(row.hourly_price ?? 0);
+    const usd = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
+    return {
+      sortedBy: sortBy,
+      note: "A data do serviço (serviceStart/serviceEnd) é texto livre no cadastro e pode estar inválida ou em formatos diferentes: cite-a só como informação. A ordem é pela data de pagamento ou de lançamento; diga ao usuário qual foi usada.",
+      items: rows.map((row) => ({
+        subcontractor: row.subcontractor?.name ?? null,
+        project: row.project?.location ?? null,
+        client: row.project?.client?.name ?? null,
+        serviceStart: row.start_date,
+        serviceEnd: row.end_date,
+        paymentDate: row.payment_date ? row.payment_date.toISOString().slice(0, 10) : null,
+        loggedAt: row.date_creation.toISOString().slice(0, 10),
+        description: row.description,
+        amountUsd: usd(amount(row)),
+      })),
+    };
+  },
+  buildReport: (_args, output) =>
+    tableReport(
+      "Recent Subcontractor Entries",
+      `sorted by ${output?.sortedBy}`,
+      [["subcontractor", "Subcontractor"], ["project", "Project"], ["serviceStart", "Service"], ["paymentDate", "Paid"], ["loggedAt", "Logged"], ["amountUsd", "Amount"]],
+      (output?.items ?? []).map((i: any) => ({ subcontractor: i.subcontractor, project: i.project, serviceStart: i.serviceStart, paymentDate: i.paymentDate, loggedAt: i.loggedAt, amountUsd: i.amountUsd }))
+    ),
+};
+
+export const recentSubcontractorSkill: HelpSkill = {
+  id: "recent-subcontractors-data",
+  description: "Últimos lançamentos de subcontractors, em ordem de data.",
+  instructions: `
+Para "último/mais recente subcontratado que trabalhou/foi pago" use recent_subcontractor_entries uma vez (padrão: ordem por data de pagamento) e diga por qual data ordenou. Não varra subcontractor por subcontractor.
+`.trim(),
+  isAvailable: (ctx) => Boolean(ctx.companyId),
+  tools: [recentSubcontractorEntries],
 };
 
 /* ------------------------------------------------------------------ */
