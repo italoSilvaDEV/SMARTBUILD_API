@@ -4,13 +4,15 @@
 
 API: https://apismartbuild.codelabsusa.com. Em 06/11/2026, GET /plans?grouped=true retornou 200 após a VPS voltar. A raiz / retornou 400, portanto não usar a raiz como health check. O catálogo contém Starter/Essentials, Group Trial e SmartBuild Mobile Core/Full; estes dois últimos têm IDs 2b82d6f3-6977-4908-9610-85728abe86b2 e 7edba762-c782-4132-b1cb-ad32f0236671. Isso difere do catálogo público produtivo.
 
+Atualização: durante a preparação, new-hml recebeu 6e030bc, que inclui também Android/schema/migração. O push isolado para new-hml foi recusado por não ser fast-forward; nada foi sobrescrito. O pacote isolado está na branch codex/task-219-subscription-comparison. Antes de publicar, confirmar com Rian se 6e030bc já foi implantado e qual pacote será validado. Não reverter a homologação nem aplicar migrações automaticamente para trocar entre essas versões.
+
 Publicar apenas o pacote de comparação derivado de new-hml. Não incluir alterações locais anteriores de Android, schema, migrações, webhooks ou checkout. Não tocar PRODUÇÃO, credenciais produtivas, assinaturas ou estados de pagamento. A exportação de buildAuthResponse existe somente para testes; o comportamento de rejeição da assinatura expirada continua igual ao da branch publicada, sem o parâmetro allowExpired presente no trabalho Android anterior.
 
 ## Instrução para a IA da VPS
 
 1. Confirmar que está na VPS e no diretório da API de homologação. Registrar branch, hash e estado Git, sem imprimir .env, tokens ou URLs com credenciais. Se houver mudanças locais, não usar reset, clean ou stash automático: informar a divergência.
 2. Conferir isolamento do banco e dos provedores em relação à produção. Retornar somente conclusões (isolado/não confirmado), nunca valores secretos. Não realizar compras, migrações, mudanças em assinaturas, limpeza de dados ou disparos externos.
-3. Atualizar new-hml por fast-forward para o commit informado junto ao pacote. Conferir que o diff não contém schema/migrações ou alterações de cobrança. Seguir o processo habitual de instalação/build da homologação. Não gerar ou aplicar migrações para este pacote.
+3. Após confirmar o pacote escolhido e o estado implantado, obter o commit exato da branch isolada informada acima. Não tratar um pull de new-hml como publicação isolada desta task. Conferir que o diff do pacote isolado não contém schema/migrações ou alterações de cobrança. Seguir o processo habitual de instalação/build da homologação sem descartar alterações locais. Não gerar ou aplicar migrações para este pacote.
 4. Antes de habilitar comparação, rodar as seis suítes listadas abaixo e a compilação. Se houver falha, parar e informar o erro sanitizado.
 5. Registrar o valor anterior (presente/ausente e true/false) de SUBSCRIPTION_ACCESS_COMPARE. Configurar true somente no ambiente da API de homologação e reiniciar exclusivamente seu processo pelo procedimento habitual. Confirmar PID/processo e commit efetivamente em execução. Não reiniciar processos produtivos ou outros workers.
 6. GET /plans?grouped=true deve responder 200. Isso é verificação de disponibilidade, não aceite da TASK-219.
