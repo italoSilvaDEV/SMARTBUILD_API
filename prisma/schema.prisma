@@ -19,6 +19,41 @@ model AccountDeletionRequest {
   @@index([email])
 }
 
+// Checkout ownership and Google reporting attribution survive app restarts.
+model AndroidBillingAttempt {
+  id                       String   @id @db.VarChar(36)
+  companyId                String   @db.VarChar(191)
+  userId                   String   @db.VarChar(191)
+  planId                   String   @db.VarChar(191)
+  country                  String   @db.VarChar(2)
+  externalTransactionToken String   @db.LongText
+  checkoutId               String?  @unique @db.VarChar(191)
+  subscriptionId           String?  @db.VarChar(191)
+  status                   String   @default("pending") @db.VarChar(24)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([subscriptionId, createdAt])
+}
+
+model AndroidBillingReport {
+  id                   String   @id @db.VarChar(64)
+  subscriptionId       String   @db.VarChar(191)
+  invoiceId            String   @db.VarChar(191)
+  attemptId            String   @db.VarChar(36)
+  payload              Json
+  status               String   @default("pending") @db.VarChar(24)
+  attempts             Int      @default(0)
+  nextAttemptAt        DateTime @default(now())
+  lastError            String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([subscriptionId, createdAt])
+}
+
 // Product telemetry is isolated from operational and billing tables.
 model AppAnalyticsEvent {
   id          String   @id @db.VarChar(36)

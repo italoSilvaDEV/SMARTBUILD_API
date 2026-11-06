@@ -18,6 +18,7 @@ import { setupMetaPurchaseRetryJob } from './jobs/metaPurchaseRetryJob';
 import { setupAppleBillingStatusJob } from './jobs/appleBillingStatusJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
 import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
+import { setupAndroidBillingReportingJob } from './jobs/androidBillingReportingJob';
 import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeService';
 import { assistantWhatsappWebhookRoutes } from './routes/assistantWhatsappRoutes';
 const cors = require('cors');
@@ -84,8 +85,17 @@ app.use(express.static('public'));
   setupTrackingRetentionJob();
   setupMetaPurchaseRetryJob();
   setupAppleBillingStatusJob();
+  setupAndroidBillingReportingJob();
   setupAppAnalyticsRetentionJob();
 })();
+
+// Node closes idle keep-alive sockets after 5s by default, but mobile clients
+// (Android OkHttp) reuse pooled connections for minutes. Reusing a socket the
+// server already closed makes the next request fail instantly (seen on receipt
+// scan uploads after picking a photo). Keep idle sockets longer than typical
+// client/proxy pools; headersTimeout must stay above keepAliveTimeout.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
 
 server.listen(4003, () =>
   console.log("server is running on http://localhost:4003")

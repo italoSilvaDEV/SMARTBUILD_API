@@ -5,6 +5,7 @@ import { prisma } from "../../utils/prisma";
 import { StripeSubscriptionItemService } from "../../services/StripeSubscriptionItemService";
 import { grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 import { sendMetaPurchaseFromCheckout } from "../../services/MetaConversionsService";
+import { enqueueAndroidBillingEvent } from "../../services/AndroidBillingReporting";
 
 const stripe = stripeConfig.getClient();
 
@@ -200,6 +201,8 @@ export class StripeWebHooksController {
             }
 
             if (!event) return res.status(400).send("Signature verification failed");
+
+            await enqueueAndroidBillingEvent(event);
 
             console.log("Processing event:", event.type);
           

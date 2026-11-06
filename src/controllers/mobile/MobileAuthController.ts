@@ -8,7 +8,9 @@ import { prisma } from "../../utils/prisma";
 import { OWNER_FULL_ACCESS_DATA, grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { observeSubscriptionAccess } from "../../services/SubscriptionAccessComparison";
 import { refreshAppleBillingStatus } from "../../services/AppleBillingStatusService";
+import { hasGoogleSubscriptionAccess, parseAndroidPlanMappings } from "../../services/AndroidBillingPolicy";
 
 type MobileProvider = "google" | "apple";
 type StorePlatform = "ios" | "android";
@@ -23,6 +25,9 @@ type VerifiedSocialProfile = {
 };
 
 type VerifiedStorePurchase = {
+  planId?: string;
+  googleAccountId?: string | null;
+  googlePaymentFailed?: boolean;
   active: boolean;
   appAccountToken?: string | null;
   productId: string;
@@ -154,7 +159,7 @@ function issuePendingToken(userId: string, companyId: string) {
   return signJwt({ type: "mobile_signup", userId, companyId }, PENDING_SIGNUP_TOKEN_TTL);
 }
 
-function verifyPendingToken(token?: string | null) {
+export function verifyPendingToken(token?: string | null) {
   if (!token) throw new Error("Missing pending signup token.");
   const decoded = Jwt.verify(token, String(process.env.SECRET_JWT)) as {
     type?: string;
@@ -367,7 +372,7 @@ async function verifyGooglePurchase(input: {
   productId?: string;
   purchaseToken?: string;
 }): Promise<VerifiedStorePurchase> {
-  if (process.env.ALLOW_MOBILE_STORE_TEST_PURCHASES === "true" && input.purchaseToken?.startsWith("test_")) {
+  if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOBILE_STORE_TEST_PURCHASES === "true" && input.purchaseToken?.startsWith("test_")) {
     const productId = input.productId || getPrimaryMobileProductId();
     assertAllowedMobileProduct(productId);
     const now = new Date();
@@ -404,21 +409,35 @@ async function verifyGooglePurchase(input: {
   const purchase = response.data as any;
   const lineItem = purchase.lineItems?.[0];
   const productId = String(lineItem?.productId || "");
-  assertAllowedMobileProduct(productId);
+  const mapping = parseAndroidPlanMappings(process.env.ANDROID_BILLING_PLAN_MAPPINGS)
+    .find(item => item.productId === productId);
+  if (mapping) {
+    if (lineItem?.offerDetails?.basePlanId !== mapping.basePlanId) {
+      throw new Error("Google Play base plan does not match the configured SmartBuild plan.");
+    }
+  } else {
+    assertAllowedMobileProduct(productId);
+  }
+  if (input.productId && input.productId !== productId) {
+    throw new Error("Google Play purchase does not match the selected product.");
+  }
 
   const endDate = new Date(lineItem?.expiryTime || 0);
   const startDate = new Date(purchase.startTime || Date.now());
   const state = String(purchase.subscriptionState || "");
 
   return {
-    active: ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"].includes(state) && endDate > new Date(),
+    active: hasGoogleSubscriptionAccess(state, lineItem?.expiryTime || ''),
+    googlePaymentFailed: state === 'SUBSCRIPTION_STATE_ON_HOLD',
+    googleAccountId: purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId,
+    planId: mapping?.planId,
     productId,
     transactionId: purchase.latestOrderId || input.purchaseToken,
     googlePurchaseToken: input.purchaseToken,
     startDate,
     endDate,
     autoRenewing: lineItem?.autoRenewingPlan?.autoRenewEnabled ?? null,
-    environment: "production",
+    environment: purchase.testPurchase ? "sandbox" : "production",
   };
 }
 
@@ -450,7 +469,7 @@ async function updateExistingStoreSubscription(input: {
   if (!subscription) return null;
 
   const isActive = input.purchase.active;
-  const plan = await getMobilePlan(input.purchase.productId);
+  const plan = await getMobilePlan(input.purchase.productId, input.billingProvider === 'google' ? input.purchase.planId : undefined);
   const updatedSubscription = await prisma.subscription.update({
     where: { id: subscription.id },
     data: {
@@ -542,6 +561,9 @@ async function persistVerifiedStoreSubscription(input: {
   purchase: VerifiedStorePurchase;
   rejectActiveStripe?: boolean;
 }) {
+  if (input.billingProvider === 'google' && input.purchase.googleAccountId && input.purchase.googleAccountId !== hashSecret(input.companyId)) {
+    throw new Error('This Google Play purchase belongs to another SmartBuild company.');
+  }
   if (input.purchase.appAccountToken && input.purchase.appAccountToken !== input.companyId) {
     throw new Error("This App Store purchase is linked to a different SmartBuild company.");
   }
@@ -568,7 +590,7 @@ async function persistVerifiedStoreSubscription(input: {
     }
   }
 
-  const plan = await getMobilePlan(input.purchase.productId);
+  const plan = await getMobilePlan(input.purchase.productId, input.billingProvider === 'google' ? input.purchase.planId : undefined);
   const subscription = await prisma.$transaction(async (tx) => {
     await tx.subscription.updateMany({
       where: {
@@ -619,7 +641,15 @@ async function persistVerifiedStoreSubscription(input: {
   return subscription;
 }
 
-async function getMobilePlan(productId?: string) {
+async function getMobilePlan(productId?: string, androidPlanId?: string) {
+  if (androidPlanId) {
+    const plan = await prisma.plan.findUnique({
+      where: { id: androidPlanId },
+      include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } },
+    });
+    if (!plan) throw new Error("The configured Android subscription plan no longer exists.");
+    return plan;
+  }
   const productConfig = productId ? getMobileProductConfig(productId) : null;
   const configuredPlanId = productConfig?.planId || process.env.MOBILE_APP_PLAN_ID;
   if (configuredPlanId) {
@@ -747,7 +777,7 @@ async function getCompanyStatus(companyId: string) {
   return { company, subscription, planInfo, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions };
 }
 
-async function buildAuthResponse(userId: string, companyId?: string | null) {
+export async function buildAuthResponse(userId: string, companyId?: string | null, allowExpired = false) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -802,9 +832,6 @@ async function buildAuthResponse(userId: string, companyId?: string | null) {
   }
 
   const status = await getCompanyStatus(selectedLink.companyId);
-  if (status.isExpired) {
-    throw new Error("Your company's subscription is not active.");
-  }
 
   const officePermissions =
     selectedLink.office?.userPermissions?.map((item) => item.permission.description).filter(Boolean) || [];
@@ -813,6 +840,20 @@ async function buildAuthResponse(userId: string, companyId?: string | null) {
     officePermissions,
     selectedLink.office?.name,
   );
+
+  await observeSubscriptionAccess({
+    consumer: 'mobile-login', company: status.company, planPermissions: status.permissions,
+    officePermissions, officeName: selectedLink.office?.name, hasCompanyAccess: true,
+    existing: {
+      subscriptionId: status.subscription?.id ?? null, planId: status.planInfo?.id ?? null,
+      isExpired: status.isExpired, paymentFailed: status.paymentFailed,
+      stripeSubscriptionCanceled: status.stripeSubscriptionCanceled, permissions,
+      seatLimit: (status.company.allowedEmployees || 0) + (status.company.extraEmployees || 0),
+    },
+  });
+  if (status.isExpired && !allowExpired) {
+    throw new Error("Your company's subscription is not active.");
+  }
 
   return {
     msg: "Authentication completed successfully!",
@@ -954,7 +995,7 @@ export class MobileAuthController {
       });
 
       if (identity) {
-        return res.json(await buildAuthResponse(identity.userId));
+        return res.json(await buildAuthResponse(identity.userId, undefined, req.body.platform === 'android'));
       }
 
       if (profile.email && profile.emailVerified) {
@@ -970,7 +1011,7 @@ export class MobileAuthController {
               userId: existingUser.id,
             },
           });
-          return res.json(await buildAuthResponse(existingUser.id));
+          return res.json(await buildAuthResponse(existingUser.id, undefined, req.body.platform === 'android'));
         }
       }
 
@@ -1075,6 +1116,7 @@ export class MobileAuthController {
         billingProvider: platform === "ios" ? "apple" : "google",
         companyId: pending.companyId,
         purchase,
+        rejectActiveStripe: platform === 'android',
       });
       if (platform === "ios") {
         try {
@@ -1238,28 +1280,35 @@ export class MobileAuthController {
 
   async googleWebhook(req: Request, res: Response) {
     try {
+      if (process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE && process.env.GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT) {
+        const ticket = await new google.auth.OAuth2().verifyIdToken({
+          idToken: getBearerToken(req) || '', audience: process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE,
+        });
+        const identity = ticket.getPayload();
+        if (!identity?.email_verified || identity.email !== process.env.GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT) return res.status(401).json({ error: 'Invalid Pub/Sub identity.' });
+      } else if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Google Pub/Sub authentication is not configured.' });
+      }
       const messageData = req.body?.message?.data;
       if (!messageData) return res.status(400).json({ error: "Missing Google Pub/Sub message data." });
 
       const payload = JSON.parse(Buffer.from(messageData, "base64").toString("utf8"));
       const subscriptionNotification = payload.subscriptionNotification;
       const purchaseToken = subscriptionNotification?.purchaseToken;
-      const notificationType = Number(subscriptionNotification?.notificationType || 0);
 
       if (!purchaseToken) return res.status(200).json({ received: true, ignored: true });
 
       const purchase = await verifyGooglePurchase({ purchaseToken });
-      const inactiveTypes = new Set([5, 12, 13]);
       await updateExistingStoreSubscription({
         billingProvider: "google",
-        purchase: { ...purchase, active: purchase.active && !inactiveTypes.has(notificationType) },
-        paymentFailed: notificationType === 5,
+        purchase,
+        paymentFailed: purchase.googlePaymentFailed || false,
       });
 
       return res.status(200).json({ received: true });
     } catch (error: any) {
       console.error("[MobileAuth.googleWebhook]", error);
-      return res.status(200).json({ received: true, error: error.message || "Google webhook ignored." });
+      return res.status(500).json({ error: 'Google notification could not be processed.' });
     }
   }
 }
