@@ -7,6 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Public requests are unverified: never authorize deletion using this email alone.
+model AccountDeletionRequest {
+  id        String   @id @db.VarChar(36)
+  email     String   @db.VarChar(254)
+  locale    String   @db.VarChar(2)
+  status    String   @default("pending_verification") @db.VarChar(32)
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
 // Product telemetry is isolated from operational and billing tables.
 model AppAnalyticsEvent {
   id          String   @id @db.VarChar(36)
