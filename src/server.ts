@@ -1,4 +1,5 @@
 import express from 'express';
+import { accountDeletionRoutes } from './routes/accountDeletionRoutes';
 import { setupAppAnalyticsRetentionJob } from './jobs/appAnalyticsRetentionJob';
 import compression from 'compression';
 import { createServer } from 'http';
@@ -63,6 +64,7 @@ app.use('/webhooks', express.raw({ type: '*/*' }), quickbooksWebHooksRoutes);
 // Compress API payloads without changing their JSON contract. Webhooks stay
 // above this middleware so their raw-body verification path remains untouched.
 app.use(compression({ threshold: 1024 }));
+app.use('/account-deletion', accountDeletionRoutes);
 app.use('/mobile/analytics/events', express.json({ limit: '64kb' }));
 app.use('/mobile/analytics/auth-events', express.json({ limit: '16kb' }));
 app.use('/landing/analytics/events', express.json({ limit: '32kb' }));
