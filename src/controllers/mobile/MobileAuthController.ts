@@ -8,6 +8,7 @@ import { prisma } from "../../utils/prisma";
 import { OWNER_FULL_ACCESS_DATA, grantOwnerFullAccessForCompany } from "../../utils/ownerFullAccess";
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { observeSubscriptionAccess } from "../../services/SubscriptionAccessComparison";
 import { refreshAppleBillingStatus } from "../../services/AppleBillingStatusService";
 
 type MobileProvider = "google" | "apple";
@@ -747,7 +748,7 @@ async function getCompanyStatus(companyId: string) {
   return { company, subscription, planInfo, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions };
 }
 
-async function buildAuthResponse(userId: string, companyId?: string | null) {
+export async function buildAuthResponse(userId: string, companyId?: string | null) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -802,9 +803,6 @@ async function buildAuthResponse(userId: string, companyId?: string | null) {
   }
 
   const status = await getCompanyStatus(selectedLink.companyId);
-  if (status.isExpired) {
-    throw new Error("Your company's subscription is not active.");
-  }
 
   const officePermissions =
     selectedLink.office?.userPermissions?.map((item) => item.permission.description).filter(Boolean) || [];
@@ -813,6 +811,20 @@ async function buildAuthResponse(userId: string, companyId?: string | null) {
     officePermissions,
     selectedLink.office?.name,
   );
+
+  await observeSubscriptionAccess({
+    consumer: 'mobile-login', company: status.company, planPermissions: status.permissions,
+    officePermissions, officeName: selectedLink.office?.name, hasCompanyAccess: true,
+    existing: {
+      subscriptionId: status.subscription?.id ?? null, planId: status.planInfo?.id ?? null,
+      isExpired: status.isExpired, paymentFailed: status.paymentFailed,
+      stripeSubscriptionCanceled: status.stripeSubscriptionCanceled, permissions,
+      seatLimit: (status.company.allowedEmployees || 0) + (status.company.extraEmployees || 0),
+    },
+  });
+  if (status.isExpired) {
+    throw new Error("Your company's subscription is not active.");
+  }
 
   return {
     msg: "Authentication completed successfully!",

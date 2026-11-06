@@ -19,6 +19,7 @@ import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
 import { assertEmployeeSeatAvailable, countActiveEmployees, EmployeeLimitError } from "../../helpers/employeeLimit";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { observeSubscriptionAccess } from "../../services/SubscriptionAccessComparison";
 import { buildLegacySnapshot, buildPolicySnapshot, toEffectiveDate } from "../../utils/breakPolicies";
 
 const PASSWORD_RECOVERY_COOLDOWN_SECONDS = 60;
@@ -2005,6 +2006,7 @@ export class UserController {
 
       let office = null;
       let officePermissions: string[] = [];
+      let hasCompanyLink = user.company?.id === company_id;
 
       if (company_id) {
         const userCompany = await prisma.userCompany.findUnique({
@@ -2028,6 +2030,7 @@ export class UserController {
         })
 
         office = userCompany?.office;
+        hasCompanyLink = hasCompanyLink || Boolean(userCompany);
 
         // Buscar permissões do office do usuário
         if (office?.userPermissions) {
@@ -2043,6 +2046,18 @@ export class UserController {
       );
 
       // Retornar no mesmo formato do getSubscriptionStatus
+      if (company) {
+        await observeSubscriptionAccess({
+          consumer: 'local-status', company, planPermissions: permissions,
+          officePermissions, officeName: office?.name,
+          hasCompanyAccess: hasCompanyLink && (req as any).userId === userId,
+          existing: {
+            subscriptionId: subscription?.id ?? null, planId: planInfo?.id ?? null,
+            isExpired, paymentFailed, stripeSubscriptionCanceled, permissions: finalPermissions,
+            seatLimit: (company.allowedEmployees || 0) + (company.extraEmployees || 0),
+          },
+        });
+      }
       return res.json({
         subscription,
         isExpired,
