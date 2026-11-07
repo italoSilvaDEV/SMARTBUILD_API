@@ -6,7 +6,7 @@ export class FindCostProjectController {
         try {
             const { material_name, pag } = request.body; 
 
-            const filtro: any = {};
+            const filtro: any = { invoiceCostProject: { project_id: { not: null }, project: { company_id: request.body.company_id } } };
             if (material_name) {
                 filtro.material_name = { contains: material_name };
             }

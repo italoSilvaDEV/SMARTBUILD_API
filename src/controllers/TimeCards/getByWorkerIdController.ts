@@ -1,3 +1,4 @@
+import { requireWorkerTimeAccess } from '../../middlewares/workerResourceAccess';
 import { DateTime } from "luxon";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
@@ -193,6 +194,9 @@ export class getByWorkerIdController {
             });
         }
 
+        let authorized = false;
+        await requireWorkerTimeAccess(req, res, () => { authorized = true; });
+        if (!authorized) return;
         if (!start_date || !deadline) {
             const defaultRange = getDefaultWeekRange();
             start_date = defaultRange.start_date;

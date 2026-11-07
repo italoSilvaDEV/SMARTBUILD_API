@@ -8,11 +8,15 @@ export class OfficeController {
     try {
       const { name, permissions, companyId } = req.body;
 
-      if (!name) {
+      if (typeof name !== "string" || !name.trim()) {
         return res.status(400).json({ error: "Name is required" });
       }
       if (!companyId) {
         return res.status(400).json({ error: "Company ID is required" });
+      }
+
+      if (["owner", "administrator", "master"].includes(name.trim().toLowerCase())) {
+        return res.status(403).json({ error: "Reserved office name" });
       }
 
       // Nome único por companhia (case insensitive via collation ou filtro)
@@ -73,6 +77,13 @@ export class OfficeController {
         return res.status(404).json({ error: "Office not found" });
       }
 
+      if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+        return res.status(400).json({ error: "Invalid office name" });
+      }
+      if (name && ["owner", "administrator", "master"].includes(name.trim().toLowerCase())
+        && name.trim().toLowerCase() !== office.name.trim().toLowerCase()) {
+        return res.status(403).json({ error: "Reserved office name" });
+      }
       const isProtected = PROTECTED_OFFICE_NAMES.includes(office.name.toLowerCase());
 
       // Offices protegidos: só permitir alterar permissões (não o nome)
@@ -95,7 +106,7 @@ export class OfficeController {
         where: { id },
         data: {
           ...(nameToApply && { name: nameToApply }),
-          userPermissions: {
+          ...(permissions !== undefined && { legacyPlanPermissions: false, userPermissions: {
             deleteMany: {},
             ...(permissions && permissions.length > 0 && {
               create: permissions.map((permissionId: string) => ({
@@ -103,7 +114,7 @@ export class OfficeController {
                 editAll: false,
               })),
             }),
-          },
+          } }),
         },
         include: {
           userPermissions: {

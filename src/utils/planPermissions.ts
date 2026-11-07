@@ -2,6 +2,7 @@ export function resolveEffectivePermissions(
   planPermissions: string[],
   officePermissions: string[],
   officeName?: string | null,
+  legacyPlanPermissions = false,
 ) {
   const uniquePlanPermissions = [...new Set(planPermissions.filter(Boolean))];
   const normalizedOfficeName = String(officeName || '').trim().toLowerCase();
@@ -10,7 +11,7 @@ export function resolveEffectivePermissions(
     return uniquePlanPermissions;
   }
 
-  if (officePermissions.length === 0) {
+  if (officePermissions.length === 0 && legacyPlanPermissions) {
     return uniquePlanPermissions;
   }
 

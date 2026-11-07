@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess as access, ref } from '../middlewares/companyResourceAccess';
 import { Router } from "express";
 import { checkToken } from "../middlewares/checkToken";
 import { EstimateController } from "../controllers/projects/EstimateController";
@@ -59,14 +60,14 @@ const uploadAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-
 const uploadSmartBuilderAttachments = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-smartbuilder"));
 const uploadCreateFullEstimate = multer(uploadConfig.uploadUtf8("./public/tmp/estimate-attachments"));
 
-estimateRoutes.get("/allestimates/:companyId", checkToken, getAllEstimatesByCompanyController.handle);
-estimateRoutes.post("/convert-to-project", checkToken, convertToProjectController.handle);
-estimateRoutes.delete("/:estimateId", checkToken, deleteEstimateController.handle);
-estimateRoutes.delete("/service/:serviceId", checkToken, deleteServiceEstimateController.handle);
-estimateRoutes.patch("/update/fields", checkToken, updateEstimateFieldsController.handle);
-estimateRoutes.patch("/update/service-fields", checkToken, updateServiceEstimateController.handle);
-estimateRoutes.post("/new-service", checkToken, createServiceEstimateController.handle);
-estimateRoutes.post("/new-estimate", checkToken, createNewEstimateController.handle);
+estimateRoutes.get("/allestimates/:companyId", checkToken, access('Estimates', [ref('company', 'params.companyId')]), getAllEstimatesByCompanyController.handle);
+estimateRoutes.post("/convert-to-project", checkToken, access('Estimates', [ref('estimate', 'body.estimateId')]), access('Projects', [ref('estimate', 'body.estimateId')]), convertToProjectController.handle);
+estimateRoutes.delete("/:estimateId", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), deleteEstimateController.handle);
+estimateRoutes.delete("/service/:serviceId", checkToken, access('Estimates', [ref('estimateService', 'params.serviceId')]), deleteServiceEstimateController.handle);
+estimateRoutes.patch("/update/fields", checkToken, access('Estimates', [ref('estimate', 'body.estimateId')]), updateEstimateFieldsController.handle);
+estimateRoutes.patch("/update/service-fields", checkToken, access('Estimates', [ref('estimateService', 'body.serviceId')]), updateServiceEstimateController.handle);
+estimateRoutes.post("/new-service", checkToken, access('Estimates', [ref('estimate', 'body.estimateId')]), createServiceEstimateController.handle);
+estimateRoutes.post("/new-estimate", checkToken, access('Estimates', [ref('project', 'body.projectId'), ref('pdf', 'body.idPdfProject')]), createNewEstimateController.handle);
 estimateRoutes.post(
   "/create-full",
   checkToken,
@@ -74,7 +75,7 @@ estimateRoutes.post(
     { name: "file", maxCount: 1 },
     { name: "attachments", maxCount: 20 },
   ]),
-  createFullEstimateController.handle.bind(createFullEstimateController)
+  access('Estimates', [ref('company', 'body.payload.project.company_id'), ref('client', 'body.payload.project.client_id', true)]), createFullEstimateController.handle.bind(createFullEstimateController)
 );
 estimateRoutes.post(
   "/create-full/project/:projectId",
@@ -83,7 +84,7 @@ estimateRoutes.post(
     { name: "file", maxCount: 1 },
     { name: "attachments", maxCount: 20 },
   ]),
-  createFullEstimateForProjectController.handle.bind(createFullEstimateForProjectController)
+  access('Estimates', [ref('project', 'params.projectId')]), createFullEstimateForProjectController.handle.bind(createFullEstimateForProjectController)
 );
 estimateRoutes.put(
   "/update-full/:estimateId",
@@ -92,42 +93,42 @@ estimateRoutes.put(
     { name: "file", maxCount: 1 },
     { name: "attachments", maxCount: 20 },
   ]),
-  updateFullEstimateController.handle.bind(updateFullEstimateController)
+  access('Estimates', [ref('estimate', 'params.estimateId')]), updateFullEstimateController.handle.bind(updateFullEstimateController)
 );
-estimateRoutes.get("/number/:companyId", checkToken, getNumberNewEstimateController.handle);
-estimateRoutes.patch("/verify-number", checkToken, getNumberNewEstimateController.verifyNumber);
-estimateRoutes.get("/dashboard/:companyId", checkToken, dashboardEstimatesController.handle);
-estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, getNumberEstimateProjectController.handle);
-estimateRoutes.patch("/verify-number-project", checkToken, getNumberEstimateProjectController.verifyNumber);
-estimateRoutes.get("/new/project/:projectId", checkToken, getEstimateByProjectIdController.handle);
-estimateRoutes.get("/last/:companyId/:projectId", checkToken, lastEstimateController.handle);
+estimateRoutes.get("/number/:companyId", checkToken, access('Estimates', [ref('company', 'params.companyId')]), getNumberNewEstimateController.handle);
+estimateRoutes.patch("/verify-number", checkToken, access('Estimates', [ref('company', 'body.companyId')]), getNumberNewEstimateController.verifyNumber);
+estimateRoutes.get("/dashboard/:companyId", checkToken, access('Estimates', [ref('company', 'params.companyId')]), dashboardEstimatesController.handle);
+estimateRoutes.get("/number/project/:companyId/:projectId", checkToken, access('Estimates', [ref('company', 'params.companyId'), ref('project', 'params.projectId')]), getNumberEstimateProjectController.handle);
+estimateRoutes.patch("/verify-number-project", checkToken, access('Estimates', [ref('company', 'body.companyId'), ref('project', 'body.projectId')]), getNumberEstimateProjectController.verifyNumber);
+estimateRoutes.get("/new/project/:projectId", checkToken, access('Estimates', [ref('project', 'params.projectId')]), getEstimateByProjectIdController.handle);
+estimateRoutes.get("/last/:companyId/:projectId", checkToken, access('Estimates', [ref('company', 'params.companyId'), ref('project', 'params.projectId')]), lastEstimateController.handle);
 estimateRoutes.put("/update/pdf-estimate", checkToken, UpdatePdfEstimateController.handle);
-estimateRoutes.patch("/update/balance-due", checkToken, balanceController.updateBalanceDue);
-estimateRoutes.get("/amount-paid/:estimateId", checkToken, balanceController.getAmountPaid);
-estimateRoutes.post("/smartbuilder/draft/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), smartBuilderEstimateController.messageDraft);
-estimateRoutes.get("/:estimateId/smartbuilder/session", checkToken, smartBuilderEstimateController.getSession);
-estimateRoutes.post("/:estimateId/smartbuilder/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), smartBuilderEstimateController.messageExisting);
-estimateRoutes.post("/:estimateId/smartbuilder/session/import", checkToken, smartBuilderEstimateController.importSession);
-estimateRoutes.post("/mobile/manual/:estimateId/regenerate-pdf", checkToken, mobileManualEstimateController.regeneratePdf.bind(mobileManualEstimateController));
+estimateRoutes.patch("/update/balance-due", checkToken, access('Estimates', [ref('estimate', 'body.estimateId')]), balanceController.updateBalanceDue);
+estimateRoutes.get("/amount-paid/:estimateId", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), balanceController.getAmountPaid);
+estimateRoutes.post("/smartbuilder/draft/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), access('Estimates', [ref('company', 'body.context.companyId', true), ref('company', 'body.context.company_id', true), ref('company', 'body.context.project.company_id', true)]), smartBuilderEstimateController.messageDraft);
+estimateRoutes.get("/:estimateId/smartbuilder/session", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), smartBuilderEstimateController.getSession);
+estimateRoutes.post("/:estimateId/smartbuilder/message", checkToken, uploadSmartBuilderAttachments.array("attachments", 8), access('Estimates', [ref('estimate', 'params.estimateId')]), smartBuilderEstimateController.messageExisting);
+estimateRoutes.post("/:estimateId/smartbuilder/session/import", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), smartBuilderEstimateController.importSession);
+estimateRoutes.post("/mobile/manual/:estimateId/regenerate-pdf", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), mobileManualEstimateController.regeneratePdf.bind(mobileManualEstimateController));
 
-estimateRoutes.post("/", checkToken, estimateController.create);
-estimateRoutes.get("/project/:projectId", checkToken, estimateController.findByProject);
-estimateRoutes.get("/project/:projectId/generate-number", checkToken, estimateController.generateNumber);
-estimateRoutes.get("/global/:companyId/generate-number", checkToken, estimateController.generateGlobalNumber);
-estimateRoutes.get("/:id", checkTokenOrEstimatePublicAccess, estimateController.findById);
-estimateRoutes.put("/:id", checkToken, estimateController.update);
-estimateRoutes.patch("/:id/status", checkTokenOrEstimatePublicAccess, estimateController.updateStatus);
-estimateRoutes.patch("/:id/sign", checkTokenOrEstimatePublicAccess, estimateController.addSignature);
-estimateRoutes.patch("/:id/manual-approval", checkToken, manualApprovalEstimateController.handle);
-estimateRoutes.patch("/:id/remove-manual-signature", checkToken, removeManualSignatureEstimateController.handle);
-estimateRoutes.put("/:id/cancel", checkToken, estimateController.cancel);
-estimateRoutes.patch("/:id/restore-pending", checkToken, estimateController.restoreToPending);
-estimateRoutes.post("/:id/service", checkToken, estimateController.addService);
-estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, estimateController.removeService);
-estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, estimateController.updateService);
-estimateRoutes.post("/:id/resend", checkToken, estimateController.resendEmail);
-estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), estimateController.sendEmail);
-estimateRoutes.patch("/:estimateId/clear-pdf-flag", checkToken, clearUpdateController.handle);
+estimateRoutes.post("/", checkToken, access('Estimates', [ref('project', 'body.projectId'), ref('pdf', 'body.idPdfProject', true)]), estimateController.create);
+estimateRoutes.get("/project/:projectId", checkToken, access('Estimates', [ref('project', 'params.projectId')]), estimateController.findByProject);
+estimateRoutes.get("/project/:projectId/generate-number", checkToken, access('Estimates', [ref('project', 'params.projectId')]), estimateController.generateNumber);
+estimateRoutes.get("/global/:companyId/generate-number", checkToken, access('Estimates', [ref('company', 'params.companyId')]), estimateController.generateGlobalNumber);
+estimateRoutes.get("/:id", checkTokenOrEstimatePublicAccess, access('Estimates', [ref('estimate', 'params.id')], true), estimateController.findById);
+estimateRoutes.put("/:id", checkToken, access('Estimates', [ref('estimate', 'params.id')]), estimateController.update);
+estimateRoutes.patch("/:id/status", checkTokenOrEstimatePublicAccess, access('Estimates', [ref('estimate', 'params.id')], true), estimateController.updateStatus);
+estimateRoutes.patch("/:id/sign", checkTokenOrEstimatePublicAccess, access('Estimates', [ref('estimate', 'params.id')], true), estimateController.addSignature);
+estimateRoutes.patch("/:id/manual-approval", checkToken, access('Estimates', [ref('estimate', 'params.id')]), manualApprovalEstimateController.handle);
+estimateRoutes.patch("/:id/remove-manual-signature", checkToken, access('Estimates', [ref('estimate', 'params.id')]), removeManualSignatureEstimateController.handle);
+estimateRoutes.put("/:id/cancel", checkToken, access('Estimates', [ref('estimate', 'params.id')]), estimateController.cancel);
+estimateRoutes.patch("/:id/restore-pending", checkToken, access('Estimates', [ref('estimate', 'params.id')]), estimateController.restoreToPending);
+estimateRoutes.post("/:id/service", checkToken, access('Estimates', [ref('estimate', 'params.id')]), estimateController.addService);
+estimateRoutes.delete("/:id/service/:serviceProjectId", checkToken, access('Estimates', [ref('estimate', 'params.id'), ref('estimateService', 'params.serviceProjectId')]), estimateController.removeService);
+estimateRoutes.put("/:id/service/:serviceProjectId", checkToken, access('Estimates', [ref('estimate', 'params.id'), ref('estimateService', 'params.serviceProjectId')]), estimateController.updateService);
+estimateRoutes.post("/:id/resend", checkToken, access('Estimates', [ref('estimate', 'params.id')]), estimateController.resendEmail);
+estimateRoutes.post("/:id/send", checkToken, uploadAttachments.array("attachments", 10), access('Estimates', [ref('estimate', 'params.id')]), estimateController.sendEmail);
+estimateRoutes.patch("/:estimateId/clear-pdf-flag", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), clearUpdateController.handle);
 
-estimateRoutes.post("/mobile/manual", checkToken, mobileManualEstimateController.handle.bind(mobileManualEstimateController));
+estimateRoutes.post("/mobile/manual", checkToken, access('Estimates', [ref('company', 'body.companyId'), ref('project', 'body.projectId', true)]), mobileManualEstimateController.handle.bind(mobileManualEstimateController));
 export { estimateRoutes }; 

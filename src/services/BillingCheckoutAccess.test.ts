@@ -1,0 +1,17 @@
+import Jwt from 'jsonwebtoken';
+import { authorizeBillingCheckout } from './BillingCheckoutAccess';
+import { issueRegistrationToken } from '../utils/publicAccessTokens';
+import { prisma } from '../utils/prisma';
+jest.mock('../utils/prisma',()=>({prisma:{user:{findUnique:jest.fn()}}}));
+const env={...process.env};
+const actor=(role='Owner',companyId='company')=>({isDisabled:false,company_id:companyId,office:{name:role,company_id:companyId},companies:[]});
+const req=(claims:any={id:'owner'},body:any={})=>({body,headers:{authorization:'Bearer '+Jwt.sign(claims,'local-fixture-secret',{algorithm:'HS256'})}} as any);
+beforeEach(()=>{jest.clearAllMocks();process.env.SECRET_JWT='local-fixture-secret';delete process.env.PUBLIC_ACCESS_JWT_SECRET;(prisma.user.findUnique as jest.Mock).mockResolvedValue(actor());});
+afterAll(()=>{process.env=env;});
+test.each(['Owner','Administrator'])('existing %s session can checkout its company',async role=>{(prisma.user.findUnique as jest.Mock).mockResolvedValue(actor(role));await expect(authorizeBillingCheckout(req(),'company')).resolves.toBeUndefined();});
+test('signup capability works only for its own company',async()=>{const r={headers:{},body:{registrationToken:issueRegistrationToken('company','owner')}} as any;await expect(authorizeBillingCheckout(r,'company')).resolves.toBeUndefined();await expect(authorizeBillingCheckout(r,'other')).rejects.toMatchObject({status:401});});
+test('global Master keeps existing management capability',async()=>{(prisma.user.findUnique as jest.Mock).mockResolvedValue({isDisabled:false,company_id:null,office:{name:'Master',company_id:null},companies:[]});await expect(authorizeBillingCheckout(req(),'company')).resolves.toBeUndefined();});
+test.each([actor('Worker'),actor('Owner','other'),{...actor(),isDisabled:true},null])('foreign/disabled/unprivileged user cannot reserve or create checkout',async value=>{(prisma.user.findUnique as jest.Mock).mockResolvedValue(value);await expect(authorizeBillingCheckout(req(),'company')).rejects.toMatchObject({status:403});});
+test('multi-company administrator membership is honored',async()=>{(prisma.user.findUnique as jest.Mock).mockResolvedValue({...actor('Worker','other'),companies:[{companyId:'company',office:{name:'Administrator'}}]});await expect(authorizeBillingCheckout(req(),'company')).resolves.toBeUndefined();});
+test.each([{id:'owner',purpose:'plan_invite'},{id:'owner',type:'pending'},{}])('non-session capability cannot impersonate a session',async claims=>{await expect(authorizeBillingCheckout(req(claims),'company')).rejects.toMatchObject({status:401});expect(prisma.user.findUnique).not.toHaveBeenCalled();});
+test('anonymous checkout is denied before database access',async()=>{await expect(authorizeBillingCheckout({body:{},headers:{}} as any,'company')).rejects.toMatchObject({status:401});expect(prisma.user.findUnique).not.toHaveBeenCalled();});

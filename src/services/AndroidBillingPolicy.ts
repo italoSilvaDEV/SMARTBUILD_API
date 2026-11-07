@@ -20,6 +20,7 @@ export function getAndroidBillingProgram(country: string): AndroidBillingProgram
 }
 
 export function isAndroidBillingEnabled(country: string, environment = process.env): boolean {
+  if (environment.GOOGLE_PLAY_NATIVE_ENABLED === 'true') return false;
   const flag = country === 'BR'
     ? environment.ANDROID_BILLING_BR_APPROVED
     : country === 'US' ? environment.ANDROID_BILLING_US_APPROVED : undefined;

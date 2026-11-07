@@ -16,7 +16,7 @@ describe('subscription permission contract (TASK-218)', () => {
   });
 
   it('preserves the legacy empty-office fallback, without inventing plan permissions', () => {
-    expect(resolveEffectivePermissions(['invoices'], [], null)).toEqual(['invoices']);
+    expect(resolveEffectivePermissions(['invoices'], [], null, true)).toEqual(['invoices']);
     expect(resolveEffectivePermissions([], [], 'Owner')).toEqual([]);
   });
 
@@ -25,4 +25,9 @@ describe('subscription permission contract (TASK-218)', () => {
     expect(resolveEffectivePermissions(['invoices', 'payroll'], office, 'Worker')).toEqual(office);
     expect(resolveEffectivePermissions(['invoices'], office, 'Worker')).toEqual(['invoices']);
   });
+});
+
+it('does not grant implicit privileges to a new empty role or missing role', () => {
+ expect(resolveEffectivePermissions(['invoices'], [], 'Custom')).toEqual([]);
+ expect(resolveEffectivePermissions(['invoices'], [], null)).toEqual([]);
 });

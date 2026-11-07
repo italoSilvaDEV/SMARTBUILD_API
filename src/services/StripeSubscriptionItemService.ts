@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import Stripe from "stripe";
 import { stripeConfig } from "../config/stripe";
 import { prisma } from "../utils/prisma";
@@ -151,7 +152,8 @@ export class StripeSubscriptionItemService {
     companyId: string,
     quantityToRemove: number,
     prorationBehavior: 'create_prorations' | 'always_invoice' | 'none' = 'create_prorations',
-    userIds?: string[]
+    userIds?: string[],
+    db: Prisma.TransactionClient = prisma
   ): Promise<ReduceExtraEmployeesResult> {
     console.log(`[ExtraEmployee] Removing ${quantityToRemove} extra seats for company ${companyId}`);
     if (userIds && userIds.length > 0) {
@@ -159,7 +161,7 @@ export class StripeSubscriptionItemService {
     }
 
     // 1. Get company with subscription info
-    const company = await prisma.company.findUnique({
+    const company = await db.company.findUnique({
       where: { id: companyId },
       select: {
         id: true,
@@ -177,7 +179,7 @@ export class StripeSubscriptionItemService {
     }
 
     // 2. Get active subscription
-    const subscription = await prisma.subscription.findFirst({
+    const subscription = await db.subscription.findFirst({
       where: {
         companyId,
         isActive: true,
@@ -229,7 +231,7 @@ export class StripeSubscriptionItemService {
     }
 
     // 7. Update company in database
-    await prisma.company.update({
+    await db.company.update({
       where: { id: companyId },
       data: {
         extraEmployees: newQuantity === 0 ? null : newQuantity,
@@ -288,9 +290,10 @@ export class StripeSubscriptionItemService {
   static async handlePlanUpgrade(
     companyId: string,
     oldAllowedEmployees: number | null,
-    newAllowedEmployees: number
+    newAllowedEmployees: number,
+    db: Prisma.TransactionClient = prisma
   ): Promise<void> {
-    const company = await prisma.company.findUnique({
+    const company = await db.company.findUnique({
       where: { id: companyId },
       select: { extraEmployees: true },
     });
@@ -306,7 +309,7 @@ export class StripeSubscriptionItemService {
       
       // Remove all extras
       if (oldExtra > 0) {
-        await this.removeAllExtraEmployees(companyId);
+        await this.removeAllExtraEmployees(companyId, db);
         // await this.convertExtraUsersToRegular(companyId, oldExtra);
       }
       return;
@@ -322,7 +325,7 @@ export class StripeSubscriptionItemService {
       if (newExtra < oldExtra) {
         // Reduce extras by the number of new plan slots
         const toRemove = oldExtra - newExtra;
-        await this.reduceExtraEmployees(companyId, toRemove, 'none');
+        await this.reduceExtraEmployees(companyId, toRemove, 'none', undefined, db);
       }
       return;
     }
@@ -334,8 +337,8 @@ export class StripeSubscriptionItemService {
   /**
    * Removes all extra employees from a company's subscription
    */
-  private static async removeAllExtraEmployees(companyId: string): Promise<void> {
-    const subscription = await prisma.subscription.findFirst({
+  private static async removeAllExtraEmployees(companyId: string, db: Prisma.TransactionClient = prisma): Promise<void> {
+    const subscription = await db.subscription.findFirst({
       where: {
         companyId,
         isActive: true,
@@ -357,7 +360,7 @@ export class StripeSubscriptionItemService {
       });
     }
 
-    await prisma.company.update({
+    await db.company.update({
       where: { id: companyId },
       data: { extraEmployees: null },
     });

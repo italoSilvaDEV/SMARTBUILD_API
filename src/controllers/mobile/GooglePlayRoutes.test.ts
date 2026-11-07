@@ -1,0 +1,28 @@
+import Jwt from 'jsonwebtoken';
+import { MobileAuthController } from './MobileAuthController';
+import { googlePlayBilling } from '../../services/GooglePlayBillingService';
+import { GoogleBillingError } from '../../services/GooglePlayPurchase';
+import { prisma } from '../../utils/prisma';
+jest.mock('../../utils/prisma',()=>({prisma:{userCompany:{findUnique:jest.fn(),findFirst:jest.fn()}}}));
+jest.mock('../../services/GooglePlayBillingService',()=>({googlePlayBilling:{sync:jest.fn(),receivePush:jest.fn()}}));
+jest.mock('googleapis',()=>({google:{}}));
+jest.mock('../../utils/S3/getPresignedUrl',()=>({getPresignedUrl:jest.fn()}));
+jest.mock('../../services/AppleBillingStatusService',()=>({refreshAppleBillingStatus:jest.fn()}));
+const controller=new MobileAuthController();
+const response=()=>{const res:any={status:jest.fn(),json:jest.fn()};res.status.mockReturnValue(res);return res;};
+const saved=process.env.SECRET_JWT;
+beforeEach(()=>{jest.clearAllMocks();process.env.SECRET_JWT='task221-unit-only';});
+afterAll(()=>{if(saved===undefined)delete process.env.SECRET_JWT;else process.env.SECRET_JWT=saved;});
+const pending=()=>Jwt.sign({type:'mobile_signup',userId:'owner',companyId:'company'},process.env.SECRET_JWT!);
+test('verify forwards signed company and actor rather than body identity',async()=>{
+ (googlePlayBilling.sync as jest.Mock).mockResolvedValue({active:false,pending:true});const res=response();
+ await controller.verifyPurchase({body:{platform:'android',pendingToken:pending(),purchaseToken:'purchase',companyId:'attacker',userId:'attacker',productId:'starter'}} as any,res);
+ expect(googlePlayBilling.sync).toHaveBeenCalledWith({token:'purchase',companyId:'company',actorId:'owner',productId:'starter'});expect(res.status).toHaveBeenCalledWith(402);expect(res.json).toHaveBeenCalledWith({error:'Subscription is not active.',pending:true});
+});
+test('unsigned signup cannot invoke purchase service',async()=>{const res=response();await controller.verifyPurchase({body:{platform:'android',pendingToken:'invalid'}} as any,res);expect(googlePlayBilling.sync).not.toHaveBeenCalled();expect(res.json).toHaveBeenCalledWith({error:'GOOGLE_SIGNUP_AUTH_REQUIRED'});});
+test('Google SDK details cannot leak through verification error',async()=>{(googlePlayBilling.sync as jest.Mock).mockRejectedValue(new Error('purchase-token credential-secret'));const res=response();await controller.verifyPurchase({body:{platform:'android',pendingToken:pending(),purchaseToken:'purchase'}} as any,res);expect(res.status).toHaveBeenCalledWith(503);expect(res.json).toHaveBeenCalledWith({error:'GOOGLE_SYNC_FAILED'});});
+test('restore requires authenticated membership before contacting Google',async()=>{const res=response();await controller.restorePurchase({body:{platform:'android',companyId:'company'},headers:{}} as any,res);expect(res.status).toHaveBeenCalledWith(401);expect(googlePlayBilling.sync).not.toHaveBeenCalled();});
+test('restore cannot use another company membership',async()=>{(prisma.userCompany.findUnique as jest.Mock).mockResolvedValue(null);const res=response();await controller.restorePurchase({body:{platform:'android',companyId:'other'},headers:{},userId:'owner'} as any,res);expect(res.status).toHaveBeenCalledWith(404);expect(googlePlayBilling.sync).not.toHaveBeenCalled();});
+test('restore uses verified membership and exposes pending status',async()=>{(prisma.userCompany.findUnique as jest.Mock).mockResolvedValue({companyId:'company'});(googlePlayBilling.sync as jest.Mock).mockResolvedValue({active:false,pending:true});const res=response();await controller.restorePurchase({body:{platform:'android',companyId:'company',purchaseToken:'purchase'},headers:{},userId:'owner'} as any,res);expect(googlePlayBilling.sync).toHaveBeenCalledWith({token:'purchase',companyId:'company',actorId:'owner',productId:undefined});expect(res.status).toHaveBeenCalledWith(402);});
+test('webhook responds success only after durable enqueue',async()=>{(googlePlayBilling.receivePush as jest.Mock).mockResolvedValue({received:true,queued:true});const res=response();await controller.googleWebhook({headers:{authorization:'Bearer oidc'},body:{message:'event'}} as any,res);expect(googlePlayBilling.receivePush).toHaveBeenCalledWith('Bearer oidc',{message:'event'});expect(res.status).toHaveBeenCalledWith(200);});
+test('untrusted webhook propagates 401 without details',async()=>{(googlePlayBilling.receivePush as jest.Mock).mockRejectedValue(new GoogleBillingError('GOOGLE_PUSH_UNAUTHORIZED',401));const res=response();await controller.googleWebhook({headers:{},body:{}} as any,res);expect(res.status).toHaveBeenCalledWith(401);expect(res.json).toHaveBeenCalledWith({error:'GOOGLE_PUSH_UNAUTHORIZED'});});

@@ -1,3 +1,4 @@
+import { requireProjectWorkAccess } from '../../middlewares/projectWorkAccess';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
@@ -79,6 +80,9 @@ export class CreateInvoiceCostProjectController {
                 return res.status(400).json({ error: "Error uploading file" });
             }
             try {
+                let authorized = false;
+                await requireProjectWorkAccess([{kind:'project',field:'project_id'}])(req, res, () => { authorized = true; });
+                if (!authorized) { if (req.file) deleteFile(req.file.path); return; }
                 const { project_id } = req.body;
                 let result;
 

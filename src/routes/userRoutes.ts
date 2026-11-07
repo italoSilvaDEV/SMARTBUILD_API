@@ -1,7 +1,9 @@
+import { requireUserManagementAccess, requireOwnUserRecord } from "../middlewares/userManagementAccess";
 import { Router } from "express"
 import { UserController } from "../controllers/User/UserController"
 import { UserMultiCompanyController } from "../controllers/User/UserMultiCompanyController";
 import { checkToken } from "../middlewares/checkToken"
+import { requireOwnSubscriptionStatus } from '../middlewares/subscriptionAccess';
 import { compressImage } from "../config/compressImage";
 import multer from "multer";
 import uploadConfig from "../config/uploadUtf8";
@@ -21,14 +23,15 @@ const uploadPhoto = multer(uploadConfig.uploadUtf8("./public/tmp/user"))
 userRoutes.post("/user",
   checkToken,
   uploadPhoto.single("avatar"),
+  requireUserManagementAccess,
   compressImage("user"),
   User.create)
 
 //update user
-userRoutes.put("/user", checkToken, User.update)
+userRoutes.put("/user", checkToken, requireUserManagementAccess, User.update)
 
 // app
-userRoutes.put("/user/update-profile", checkToken, User.updateUserProfile);
+userRoutes.put("/user/update-profile", checkToken, requireOwnUserRecord, User.updateUserProfile);
 
 //update imgUser
 userRoutes.put("/user/img/:id",
@@ -51,7 +54,7 @@ userRoutes.get("/user/office", checkToken, User.serchOfficeUser)
 userRoutes.post("/user/consulta", checkToken, User.serchAllUser)
 
 //Busca all user
-userRoutes.delete("/user/:id", checkToken, User.delete)
+userRoutes.delete("/user/:id", checkToken, requireUserManagementAccess, User.delete)
 
 //Recuperar senha
 userRoutes.post('/recover-password', User.sendMailRecover)
@@ -59,13 +62,13 @@ userRoutes.post('/valid-code', User.validCode)
 userRoutes.post('/create-password', User.updatePassword)
 
 // Atualizar email do usuário e enviar nova senha
-userRoutes.post("/user/update-email", checkToken, User.updateUserEmailAndSendPassword);
+userRoutes.post("/user/update-email", checkToken, requireUserManagementAccess, User.updateUserEmailAndSendPassword);
 
 // Rota para verificar status da assinatura
 userRoutes.get('/user/subscription-status/:userId?', checkToken, User.getSubscriptionStatus);
 
 // Rota para verificar status da assinatura local
-userRoutes.get('/user/local-subscription-status/:userId/:company_id', checkToken, User.getLocalSubscriptionsStatus);
+userRoutes.get('/user/local-subscription-status/:userId/:company_id', checkToken, requireOwnSubscriptionStatus, User.getLocalSubscriptionsStatus);
 
 // rota com feature toggle para autenticação
 userRoutes.post("/auth", async (req, res) => {
@@ -85,13 +88,13 @@ userRoutes.post("/auth/by-company", async (req, res) => {
   return UserMultiCompany.authenticateByCompany(req, res);
 });
 
-userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, User.deleteUserCompany);
+userRoutes.delete("/user/userCompany/delete/:userId/:companyId", checkToken, requireUserManagementAccess, User.deleteUserCompany);
 
 userRoutes.put("/user/onboarding/complete/:id", checkToken, User.completeOnboardingStatus);
 userRoutes.get("/user/onboarding/status/:id", checkToken, User.getOnboardingStatus);
 
 // Resend password
-userRoutes.post("/user/resend-password/:id", checkToken, User.resendPassword);
+userRoutes.post("/user/resend-password/:id", checkToken, requireUserManagementAccess, User.resendPassword);
 
 // Check email availability
 userRoutes.post("/user/check-email", checkToken, User.checkEmailAvailability);

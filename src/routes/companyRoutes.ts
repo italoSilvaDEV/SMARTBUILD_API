@@ -1,3 +1,4 @@
+import { requireMaster } from '../middlewares/requireMaster';
 import { Router } from "express"
 import { compressImage } from "../config/compressImage";
 import { CompanyController } from "../controllers/company/CompanyController";
@@ -22,10 +23,12 @@ companyRoutes.post("/company",
 
 companyRoutes.post("/company/master-new-client",
     checkToken,
+    requireMaster,
     Company.createFromMaster)
 
 companyRoutes.post("/company/master",
     checkToken,
+    requireMaster,
     uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.createAccountByMaster)
@@ -56,7 +59,7 @@ companyRoutes.get("/company",
     checkToken,
     Company.findMany)
 
-companyRoutes.patch("/company/:id/archive", checkToken, Company.updateArchiveStatus);
+companyRoutes.patch("/company/:id/archive", checkToken, requireMaster, Company.updateArchiveStatus);
 
 companyRoutes.post('/company/:companyId/notes', checkToken, Company.createNote);
 companyRoutes.put('/company/:companyId/notes/:noteId', checkToken, Company.updateNote);
@@ -75,6 +78,7 @@ companyRoutes.post("/company/master-delete/confirm", checkToken, deleteMasterCon
 companyRoutes.put(
     "/company/:id",
     checkToken,
+    requireMaster,
     uploadPhoto.single("avatar"),
     compressImage("company"),
     Company.updateCompanyAndUser

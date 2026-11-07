@@ -1,3 +1,10 @@
+import { androidBillingAccess } from '../../services/AndroidBillingAccess';
+import { billingPurchaseCoordinator, billingReference } from '../../services/BillingPurchaseCoordinator';
+import { admitVerifiedBilling, billingCoordinationEnabled, BillingAttemptError } from '../../services/BillingPurchaseCoordinator';
+import { googlePlayBilling } from '../../services/GooglePlayBillingService';
+import { assertNoForeignSubscription } from '../../services/SubscriptionPurchaseGuard';
+import { GoogleBillingError } from '../../services/GooglePlayPurchase';
+import { ensureCompanyPlanSetup } from '../../services/MobilePlanSetup';
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import Jwt from "jsonwebtoken";
@@ -9,8 +16,9 @@ import { OWNER_FULL_ACCESS_DATA, grantOwnerFullAccessForCompany } from "../../ut
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
 import { observeSubscriptionAccess } from "../../services/SubscriptionAccessComparison";
+import { resolveCompanySubscriptionStatus } from "../../services/SubscriptionAccessDecision";
 import { refreshAppleBillingStatus } from "../../services/AppleBillingStatusService";
-import { hasGoogleSubscriptionAccess, parseAndroidPlanMappings } from "../../services/AndroidBillingPolicy";
+import { resolveApplePlanId } from '../../services/MobileStorePlanMapping';
 
 type MobileProvider = "google" | "apple";
 type StorePlatform = "ios" | "android";
@@ -133,14 +141,6 @@ function assertAllowedMobileProduct(productId: string) {
   if (!getMobileProductIds().includes(productId)) {
     throw new Error("Store purchase product does not match an available mobile plan.");
   }
-}
-
-function inferMobilePlanPrice(productId: string) {
-  const configuredPrice = getMobileProductConfig(productId)?.price;
-  if (configuredPrice) return configuredPrice;
-  if (/(^|[^0-9])99([^0-9]|$)/.test(productId)) return 99;
-  if (/(^|[^0-9])29([^0-9]|$)/.test(productId)) return 29;
-  return null;
 }
 
 function normalizeEmail(email?: unknown) {
@@ -368,79 +368,6 @@ async function verifyApplePurchase(input: {
   };
 }
 
-async function verifyGooglePurchase(input: {
-  productId?: string;
-  purchaseToken?: string;
-}): Promise<VerifiedStorePurchase> {
-  if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOBILE_STORE_TEST_PURCHASES === "true" && input.purchaseToken?.startsWith("test_")) {
-    const productId = input.productId || getPrimaryMobileProductId();
-    assertAllowedMobileProduct(productId);
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setMonth(endDate.getMonth() + 1);
-    return {
-      active: true,
-      productId,
-      transactionId: input.purchaseToken,
-      googlePurchaseToken: input.purchaseToken,
-      startDate: now,
-      endDate,
-      autoRenewing: true,
-      environment: "sandbox",
-    };
-  }
-
-  const packageName = process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.anonymous.smartbuildadminapp";
-  const serviceAccountJson = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON;
-  if (!serviceAccountJson) throw new Error("Google Play service account credentials are not configured.");
-  if (!input.purchaseToken) throw new Error("Google purchase token is required.");
-
-  const credentials = JSON.parse(serviceAccountJson);
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/androidpublisher"],
-  });
-  const androidpublisher = google.androidpublisher({ version: "v3", auth });
-  const response = await androidpublisher.purchases.subscriptionsv2.get({
-    packageName,
-    token: input.purchaseToken,
-  });
-
-  const purchase = response.data as any;
-  const lineItem = purchase.lineItems?.[0];
-  const productId = String(lineItem?.productId || "");
-  const mapping = parseAndroidPlanMappings(process.env.ANDROID_BILLING_PLAN_MAPPINGS)
-    .find(item => item.productId === productId);
-  if (mapping) {
-    if (lineItem?.offerDetails?.basePlanId !== mapping.basePlanId) {
-      throw new Error("Google Play base plan does not match the configured SmartBuild plan.");
-    }
-  } else {
-    assertAllowedMobileProduct(productId);
-  }
-  if (input.productId && input.productId !== productId) {
-    throw new Error("Google Play purchase does not match the selected product.");
-  }
-
-  const endDate = new Date(lineItem?.expiryTime || 0);
-  const startDate = new Date(purchase.startTime || Date.now());
-  const state = String(purchase.subscriptionState || "");
-
-  return {
-    active: hasGoogleSubscriptionAccess(state, lineItem?.expiryTime || ''),
-    googlePaymentFailed: state === 'SUBSCRIPTION_STATE_ON_HOLD',
-    googleAccountId: purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId,
-    planId: mapping?.planId,
-    productId,
-    transactionId: purchase.latestOrderId || input.purchaseToken,
-    googlePurchaseToken: input.purchaseToken,
-    startDate,
-    endDate,
-    autoRenewing: lineItem?.autoRenewingPlan?.autoRenewEnabled ?? null,
-    environment: purchase.testPurchase ? "sandbox" : "production",
-  };
-}
-
 async function verifyStorePurchase(platform: StorePlatform, body: any): Promise<VerifiedStorePurchase> {
   if (platform === "ios") {
     return verifyApplePurchase({
@@ -450,10 +377,7 @@ async function verifyStorePurchase(platform: StorePlatform, body: any): Promise<
     });
   }
 
-  return verifyGooglePurchase({
-    productId: body.productId,
-    purchaseToken: body.purchaseToken || body.googlePurchaseToken,
-  });
+  throw new GoogleBillingError('GOOGLE_NATIVE_PATH_REQUIRED',400);
 }
 
 async function updateExistingStoreSubscription(input: {
@@ -470,7 +394,11 @@ async function updateExistingStoreSubscription(input: {
 
   const isActive = input.purchase.active;
   const plan = await getMobilePlan(input.purchase.productId, input.billingProvider === 'google' ? input.purchase.planId : undefined);
-  const updatedSubscription = await prisma.subscription.update({
+  return prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT id FROM Company WHERE id = ${subscription.companyId} FOR UPDATE`;
+  if (!await admitVerifiedBilling(tx, subscription.companyId, input.billingProvider,
+      input.purchase.originalTransactionId || input.purchase.transactionId || '', isActive, [subscription.id])) return null;
+  const updatedSubscription = await tx.subscription.update({
     where: { id: subscription.id },
     data: {
       planId: plan.id,
@@ -492,7 +420,7 @@ async function updateExistingStoreSubscription(input: {
   });
 
   if (isActive) {
-    await prisma.subscription.updateMany({
+    await tx.subscription.updateMany({
       where: {
         billingProvider: input.billingProvider,
         companyId: subscription.companyId,
@@ -501,9 +429,9 @@ async function updateExistingStoreSubscription(input: {
       },
       data: { isActive: false },
     });
-    await ensureCompanyPlanSetup(subscription.companyId, plan);
+    await ensureCompanyPlanSetup(subscription.companyId, plan, tx);
   } else {
-    const otherActiveSubscription = await prisma.subscription.findFirst({
+    const otherActiveSubscription = await tx.subscription.findFirst({
       where: {
         companyId: subscription.companyId,
         id: { not: subscription.id },
@@ -514,7 +442,7 @@ async function updateExistingStoreSubscription(input: {
     });
 
     if (!otherActiveSubscription) {
-      await prisma.company.update({
+      await tx.company.update({
         where: { id: subscription.companyId },
         data: { mobileSubscriptionStatus: "expired" },
       });
@@ -522,6 +450,7 @@ async function updateExistingStoreSubscription(input: {
   }
 
   return updatedSubscription;
+  }, { isolationLevel: "ReadCommitted", timeout: 20000 });
 }
 
 async function findExistingStoreSubscription(
@@ -592,6 +521,16 @@ async function persistVerifiedStoreSubscription(input: {
 
   const plan = await getMobilePlan(input.purchase.productId, input.billingProvider === 'google' ? input.purchase.planId : undefined);
   const subscription = await prisma.$transaction(async (tx) => {
+    // Share Google's company lock; do not let concurrent store confirmations
+    // each observe an empty company. Existing provider rules remain below.
+    await tx.$queryRaw`SELECT id FROM Company WHERE id = ${input.companyId} FOR UPDATE`;
+
+    if (billingCoordinationEnabled()) {
+      if (!await admitVerifiedBilling(tx,input.companyId,input.billingProvider,
+        input.purchase.originalTransactionId || input.purchase.transactionId || '',input.purchase.active,existing?[existing.id]:[])) return null;
+    } else if (input.purchase.active) await assertNoForeignSubscription(tx, input.companyId, input.billingProvider);
+    if (input.purchase.active) await ensureCompanyPlanSetup(input.companyId, plan, tx);
+
     await tx.subscription.updateMany({
       where: {
         billingProvider: input.billingProvider,
@@ -634,9 +573,7 @@ async function persistVerifiedStoreSubscription(input: {
     });
   });
 
-  if (input.purchase.active) {
-    await ensureCompanyPlanSetup(input.companyId, plan);
-  }
+  if (!subscription) throw new BillingAttemptError("BILLING_REQUIRES_REVIEW", input.billingProvider);
 
   return subscription;
 }
@@ -650,74 +587,17 @@ async function getMobilePlan(productId?: string, androidPlanId?: string) {
     if (!plan) throw new Error("The configured Android subscription plan no longer exists.");
     return plan;
   }
-  const productConfig = productId ? getMobileProductConfig(productId) : null;
-  const configuredPlanId = productConfig?.planId || process.env.MOBILE_APP_PLAN_ID;
-  if (configuredPlanId) {
-    const plan = await prisma.plan.findUnique({
-      where: { id: configuredPlanId },
-      include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } },
-    });
-    if (plan) return plan;
-  }
-
-  const plans = await prisma.plan.findMany({
-    where: { isActive: true, isCampaign: false },
+  const configuredPlanId = resolveApplePlanId({
+    productId, configuredProducts: parseMobileProductsJson(),
+    legacyProductId: process.env.MOBILE_APP_PRODUCT_ID,
+    legacyPlanId: process.env.MOBILE_APP_PLAN_ID,
+  });
+  const plan = await prisma.plan.findUnique({
+    where: { id: configuredPlanId },
     include: { permissionGroup: { include: { GroupPermissionsList: { select: { permission_id: true } } } } },
-    orderBy: [{ price: "asc" }, { createdAt: "desc" }],
   });
-
-  const inferredPrice = productId ? inferMobilePlanPrice(productId) : null;
-  const byInferredPrice = inferredPrice
-    ? plans.find((plan) => Math.trunc(Number(plan.price || 0)) === inferredPrice)
-    : null;
-  if (byInferredPrice) return byInferredPrice;
-
-  const byPrice = plans.find((plan) => Math.trunc(Number(plan.price || 0)) === 29);
-  if (byPrice) return byPrice;
-
-  const fallback = plans.find((plan) => plan.validityType !== "FREE") || plans[0];
-  if (!fallback) throw new Error("Mobile app plan is not configured.");
-  return fallback;
-}
-
-async function applyPermissionsToOffice(officeId: string, permissionIds: string[]) {
-  await prisma.userPermission.deleteMany({ where: { office_id: officeId } });
-  if (permissionIds.length === 0) return;
-  await prisma.userPermission.createMany({
-    data: permissionIds.map((permission_id) => ({
-      office_id: officeId,
-      permission_id,
-      editAll: false,
-    })),
-  });
-}
-
-async function ensureCompanyPlanSetup(companyId: string, plan: Awaited<ReturnType<typeof getMobilePlan>>) {
-  const permissionIds = plan.permissionGroup.GroupPermissionsList.map((item) => item.permission_id);
-
-  await prisma.company.update({
-    where: { id: companyId },
-    data: {
-      planId: plan.id,
-      allowedEmployees: plan.allowedEmployees,
-      mobileSubscriptionStatus: "active",
-    },
-  });
-
-  const ownerOffice = await prisma.office.findFirst({ where: { company_id: companyId, name: "Owner" } });
-  if (ownerOffice) await applyPermissionsToOffice(ownerOffice.id, permissionIds);
-
-  const workerOffice = await prisma.office.findFirst({ where: { company_id: companyId, name: "Worker" } });
-  if (!workerOffice) {
-    await prisma.office.create({ data: { name: "Worker", company_id: companyId } });
-  }
-
-  let adminOffice = await prisma.office.findFirst({ where: { company_id: companyId, name: "Administrator" } });
-  if (!adminOffice) {
-    adminOffice = await prisma.office.create({ data: { name: "Administrator", company_id: companyId } });
-  }
-  await applyPermissionsToOffice(adminOffice.id, permissionIds);
-  await grantOwnerFullAccessForCompany(companyId);
+  if (!plan) throw new Error('The configured store subscription plan no longer exists.');
+  return plan;
 }
 
 async function getCompanyStatus(companyId: string) {
@@ -739,12 +619,17 @@ async function getCompanyStatus(companyId: string) {
   });
   if (!company) throw new Error("Company not found.");
 
-  const subscription = await prisma.subscription.findFirst({
-    where: { companyId },
+  // Read at most two active rows in one snapshot: never choose a winner.
+  const activeSubscriptions = await prisma.subscription.findMany({
+    where: { companyId, isActive: true,
+      NOT: { plan: { validityType: 'FREE' }, endDate: { lte: new Date() } },
+    },
     orderBy: { startDate: "desc" },
+    take: 2,
   });
 
-  const planInfo = company.Plan
+
+  let planInfo = company.Plan
     ? {
         id: company.Plan.id,
         name: company.Plan.name,
@@ -756,25 +641,17 @@ async function getCompanyStatus(companyId: string) {
       }
     : null;
 
-  let isExpired = true;
-  let paymentFailed = false;
-  let stripeSubscriptionCanceled = false;
+  const planPermissions = company.Plan?.permissionGroup?.GroupPermissionsList?.map(item => item.Permissions.description) || [];
+  const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions, accessIssue } = resolveCompanySubscriptionStatus({
+    companyId, plan: planInfo ? { ...planInfo, permissions: planPermissions } : null,
+    allowedEmployees: company.allowedEmployees ?? 0, extraEmployees: company.extraEmployees ?? 0,
+    pendingSubscription: company.mobileSubscriptionStatus === 'pending_subscription',
+    subscriptions: activeSubscriptions, now: new Date(),
+  });
+  if (accessIssue) planInfo = null;
 
-  if (company.mobileSubscriptionStatus === "pending_subscription") {
-    isExpired = true;
-  } else if (!planInfo) {
-    isExpired = true;
-  } else if (planInfo.validityType === "FREE") {
-    isExpired = subscription ? new Date(subscription.endDate) < new Date() : true;
-  } else if (subscription) {
-    isExpired = !subscription.isActive || new Date(subscription.endDate) < new Date();
-    paymentFailed = subscription.paymentFailed;
-    stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
-  }
-
-  const permissions = company.Plan?.permissionGroup?.GroupPermissionsList?.map((item) => item.Permissions.description) || [];
-
-  return { company, subscription, planInfo, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions };
+  return { company, subscription, planInfo, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions,
+    ...(accessIssue ? { accessIssue } : {}) };
 }
 
 export async function buildAuthResponse(userId: string, companyId?: string | null, allowExpired = false) {
@@ -839,11 +716,12 @@ export async function buildAuthResponse(userId: string, companyId?: string | nul
     status.permissions,
     officePermissions,
     selectedLink.office?.name,
+    selectedLink.office?.legacyPlanPermissions === true,
   );
 
   await observeSubscriptionAccess({
     consumer: 'mobile-login', company: status.company, planPermissions: status.permissions,
-    officePermissions, officeName: selectedLink.office?.name, hasCompanyAccess: true,
+    officePermissions, officeName: selectedLink.office?.name, legacyPlanPermissions: selectedLink.office?.legacyPlanPermissions === true, hasCompanyAccess: true,
     existing: {
       subscriptionId: status.subscription?.id ?? null, planId: status.planInfo?.id ?? null,
       isExpired: status.isExpired, paymentFailed: status.paymentFailed,
@@ -851,6 +729,15 @@ export async function buildAuthResponse(userId: string, companyId?: string | nul
       seatLimit: (status.company.allowedEmployees || 0) + (status.company.extraEmployees || 0),
     },
   });
+  if (status.accessIssue === "multiple_subscriptions") {
+    throw new Error("Your company has multiple active subscriptions. Please contact support before purchasing another subscription.");
+  }
+  if (status.accessIssue === 'company_subscription_plan_mismatch') {
+    throw new Error("Your company's plan does not match its subscription. Please contact support before purchasing another subscription.");
+  }
+  if (status.accessIssue) {
+    throw new Error("Your company's subscription requires verification. Please contact support before purchasing another subscription.");
+  }
   if (status.isExpired && !allowExpired) {
     throw new Error("Your company's subscription is not active.");
   }
@@ -1109,14 +996,24 @@ export class MobileAuthController {
         return res.status(400).json({ error: "Invalid store platform." });
       }
 
-      const pending = verifyPendingToken(pendingToken);
+      let pending;
+      try { pending = verifyPendingToken(pendingToken); }
+      catch (error) {
+        if (platform === 'android') throw new GoogleBillingError('GOOGLE_SIGNUP_AUTH_REQUIRED',401);
+        throw error;
+      }
+      if (platform === 'android') {
+        const result = await googlePlayBilling.sync({token:req.body.purchaseToken || req.body.googlePurchaseToken,companyId:pending.companyId,actorId:pending.userId,productId:req.body.productId});
+        if (!result.active) return res.status(402).json({error:'Subscription is not active.',pending:result.pending});
+        return res.json(await buildAuthResponse(pending.userId,pending.companyId));
+      }
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
       const subscription = await persistVerifiedStoreSubscription({
-        billingProvider: platform === "ios" ? "apple" : "google",
+        billingProvider: "apple",
         companyId: pending.companyId,
         purchase,
-        rejectActiveStripe: platform === 'android',
+        rejectActiveStripe: false,
       });
       if (platform === "ios") {
         try {
@@ -1127,6 +1024,7 @@ export class MobileAuthController {
       }
       return res.json(await buildAuthResponse(pending.userId, pending.companyId));
     } catch (error: any) {
+      if (req.body?.platform === 'android') return res.status(error instanceof GoogleBillingError ? error.status : 503).json({error:error instanceof GoogleBillingError ? error.code : 'GOOGLE_SYNC_FAILED'});
       console.error("[MobileAuth.verifyPurchase]", error);
       return res.status(400).json({ error: error.message || "Could not verify purchase." });
     }
@@ -1148,10 +1046,15 @@ export class MobileAuthController {
 
       if (!userCompany) return res.status(404).json({ error: "Company not found for this user." });
 
+      if (platform === 'android') {
+        const result = await googlePlayBilling.sync({token:req.body.purchaseToken || req.body.googlePurchaseToken,companyId:userCompany.companyId,actorId:userId,productId:req.body.productId});
+        if (!result.active) return res.status(402).json({error:'Subscription is not active.',pending:result.pending});
+        return res.json(await buildAuthResponse(userId,userCompany.companyId));
+      }
       const purchase = await verifyStorePurchase(platform, req.body);
       if (!purchase.active) return res.status(402).json({ error: "Subscription is not active." });
       const subscription = await persistVerifiedStoreSubscription({
-        billingProvider: platform === "ios" ? "apple" : "google",
+        billingProvider: "apple",
         companyId: userCompany.companyId,
         purchase,
         rejectActiveStripe: true,
@@ -1166,6 +1069,7 @@ export class MobileAuthController {
 
       return res.json(await buildAuthResponse(userId, userCompany.companyId));
     } catch (error: any) {
+      if (req.body?.platform === 'android') return res.status(error instanceof GoogleBillingError ? error.status : 503).json({error:error instanceof GoogleBillingError ? error.code : 'GOOGLE_SYNC_FAILED'});
       console.error("[MobileAuth.restorePurchase]", error);
       return res.status(400).json({ error: error.message || "Could not restore purchase." });
     }
@@ -1250,6 +1154,20 @@ export class MobileAuthController {
     }
   }
 
+  async beginApplePurchase(req:Request,res:Response) {
+    try {
+      const access=await androidBillingAccess(req);
+      if(!billingCoordinationEnabled()) return res.json({attemptId:null});
+      if(typeof req.body.requestId!=='string' || !/^[a-zA-Z0-9-]{16,64}$/.test(req.body.requestId))
+        return res.status(400).json({error:'Invalid purchase request.'});
+      assertAllowedMobileProduct(req.body.productId);
+      const plan=await getMobilePlan(req.body.productId);
+      const attempt=await billingPurchaseCoordinator.reserve(access.companyId,'apple',plan.id,billingReference(req.body.requestId),undefined,true);
+      await billingPurchaseCoordinator.launch(access.companyId,attempt.id);
+      return res.json({attemptId:attempt.id});
+    } catch(error:any) {return res.status(error.status||503).json({error:error.code||'Apple billing requires verification.',provider:error.provider});}
+  }
+
   async appleWebhook(req: Request, res: Response) {
     try {
       const { signedPayload } = req.body as { signedPayload?: string };
@@ -1260,6 +1178,13 @@ export class MobileAuthController {
       if (!transactionJws) return res.status(200).json({ received: true, ignored: true });
 
       const purchase = await verifyApplePurchase({ signedTransactionInfo: transactionJws });
+      if (billingCoordinationEnabled()) {
+        // The outer notification is a hint only. Read authenticated current state;
+        // replayed/forged event labels must not expire or reactivate an account.
+        const existing=await findExistingStoreSubscription('apple',purchase);
+        if(existing) await refreshAppleBillingStatus(existing.id);
+        return res.status(200).json({received:true});
+      }
       const notificationType = String(notification.notificationType || "");
       const paymentFailed = notificationType === "DID_FAIL_TO_RENEW";
       const inactiveTypes = new Set(["EXPIRED", "REFUND", "REVOKE"]);
@@ -1279,36 +1204,7 @@ export class MobileAuthController {
   }
 
   async googleWebhook(req: Request, res: Response) {
-    try {
-      if (process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE && process.env.GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT) {
-        const ticket = await new google.auth.OAuth2().verifyIdToken({
-          idToken: getBearerToken(req) || '', audience: process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE,
-        });
-        const identity = ticket.getPayload();
-        if (!identity?.email_verified || identity.email !== process.env.GOOGLE_PLAY_PUBSUB_SERVICE_ACCOUNT) return res.status(401).json({ error: 'Invalid Pub/Sub identity.' });
-      } else if (process.env.NODE_ENV === 'production') {
-        return res.status(503).json({ error: 'Google Pub/Sub authentication is not configured.' });
-      }
-      const messageData = req.body?.message?.data;
-      if (!messageData) return res.status(400).json({ error: "Missing Google Pub/Sub message data." });
-
-      const payload = JSON.parse(Buffer.from(messageData, "base64").toString("utf8"));
-      const subscriptionNotification = payload.subscriptionNotification;
-      const purchaseToken = subscriptionNotification?.purchaseToken;
-
-      if (!purchaseToken) return res.status(200).json({ received: true, ignored: true });
-
-      const purchase = await verifyGooglePurchase({ purchaseToken });
-      await updateExistingStoreSubscription({
-        billingProvider: "google",
-        purchase,
-        paymentFailed: purchase.googlePaymentFailed || false,
-      });
-
-      return res.status(200).json({ received: true });
-    } catch (error: any) {
-      console.error("[MobileAuth.googleWebhook]", error);
-      return res.status(500).json({ error: 'Google notification could not be processed.' });
-    }
+    try { return res.status(200).json(await googlePlayBilling.receivePush(req.headers.authorization,req.body)); }
+    catch (error) { return res.status(error instanceof GoogleBillingError ? error.status : 503).json({error:error instanceof GoogleBillingError ? error.code : 'GOOGLE_SYNC_FAILED'}); }
   }
 }

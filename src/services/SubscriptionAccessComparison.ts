@@ -17,6 +17,7 @@ type ComparisonInput = {
   planPermissions: string[];
   officePermissions: string[];
   officeName?: string | null;
+  legacyPlanPermissions?: boolean;
   hasCompanyAccess: boolean;
   existing: ExistingAccess;
 };
@@ -32,6 +33,7 @@ export async function observeSubscriptionAccess(input: ComparisonInput): Promise
         id: true, companyId: true, planId: true, billingProvider: true,
         startDate: true, endDate: true, isActive: true, paymentFailed: true,
         stripeSubscriptionCanceled: true, autoRenewing: true, appleBillingStatus: true,
+        plan: { select: { validityType: true } },
       },
       take: 101,
       orderBy: { id: 'asc' },
@@ -47,6 +49,7 @@ export async function observeSubscriptionAccess(input: ComparisonInput): Promise
       extraEmployees: input.company.extraEmployees ?? 0,
       officePermissions: input.officePermissions,
       officeName: input.officeName,
+      legacyPlanPermissions: input.legacyPlanPermissions,
       hasCompanyAccess: input.hasCompanyAccess,
       pendingSubscription: input.company.mobileSubscriptionStatus === 'pending_subscription',
       subscriptions,

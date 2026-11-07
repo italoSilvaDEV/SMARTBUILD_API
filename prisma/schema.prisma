@@ -615,6 +615,7 @@ model MetaPurchaseDelivery {
 }
 
 model Office {
+  legacyPlanPermissions Boolean @default(false)
   id              String           @id @default(uuid())
   name            String
   date_creation   DateTime         @default(now())
@@ -1259,6 +1260,7 @@ model GalleryAfter {
 }
 
 model PdfProject {
+  uploadedById String? // Owner of a pending upload; linked documents use resource permissions.
   id                 String  @id @default(uuid())
   original_file_name String?
   uri                String?
@@ -3792,4 +3794,56 @@ model HelpAssistantMessage {
 
   @@index([threadId, createdAt])
   @@map("help_assistant_messages")
+}
+
+// Durable Google-only verification/ack retry ledger. Tokens must never be logged or returned.
+model GooglePlayPurchaseSync {
+  id String @id @default(uuid())
+  purchaseToken String @unique @db.VarChar(512)
+  companyId String?
+  subscriptionId String?
+  retired Boolean @default(false)
+  leaseId String? @db.VarChar(64)
+  lockedUntil DateTime?
+  nextAttemptAt DateTime @default(now())
+  attempts Int @default(0)
+  lastErrorCode String? @db.VarChar(64)
+  lastVerifiedAt DateTime?
+  acknowledgedAt DateTime?
+  state String? @db.VarChar(64)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([retired, nextAttemptAt])
+  @@index([companyId])
+}
+// A company has at most one checkout slot. Provider outcomes, not client timers,
+// release uncertain payments. No credentials or payment instruments are stored.
+model BillingPurchaseAttempt {
+  companyId String @id @db.VarChar(191)
+  id String @unique @db.VarChar(36)
+  provider String @db.VarChar(16)
+  planId String @db.VarChar(191)
+  requestKey String @db.VarChar(64)
+  state String @db.VarChar(24)
+  expiresAt DateTime
+  contractRef String? @db.VarChar(191)
+  params Json?
+  checkoutId String? @db.VarChar(191)
+  checkoutUrl String? @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BillingConflict {
+  id String @id @db.VarChar(64)
+  companyId String @db.VarChar(191)
+  provider String @db.VarChar(16)
+  contractRef String @db.VarChar(191)
+  blockingProvider String @db.VarChar(16)
+  state String @default("open") @db.VarChar(24)
+  reason String @db.VarChar(80)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt DateTime @updatedAt
+  resolvedAt DateTime?
+  @@index([companyId, state])
 }

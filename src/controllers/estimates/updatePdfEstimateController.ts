@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess, ref } from '../../middlewares/companyResourceAccess';
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { deleteFile } from "../../config/file";
@@ -37,6 +38,10 @@ export class updatePdfEstimateController {
             if (err) {
                 return res.status(400).json({ error: 'Error uploading file' });
             }
+
+            let authorized = false;
+            await requireCompanyResourceAccess('Estimates', [ref('estimate', 'body.estimateId')])(req, res, () => { authorized = true; });
+            if (!authorized) { if (req.file) this.deleteFiles(req.file.filename); return; }
 
             try {
                 const {

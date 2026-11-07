@@ -39,3 +39,5 @@ describe('Android billing policy', () => {
     expect(() => parseAndroidPlanMappings('{}')).toThrow();
   });
 });
+
+it('native billing disables the old regional checkout even with approvals',()=>{expect(isAndroidBillingEnabled('BR',{GOOGLE_PLAY_NATIVE_ENABLED:'true',ANDROID_BILLING_ENABLED:'true',ANDROID_BILLING_BR_APPROVED:'true'})).toBe(false);});

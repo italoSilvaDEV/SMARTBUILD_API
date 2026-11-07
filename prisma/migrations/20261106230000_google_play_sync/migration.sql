@@ -1,0 +1,21 @@
+CREATE TABLE `GooglePlayPurchaseSync` (
+ `id` VARCHAR(191) NOT NULL,
+ `purchaseToken` VARCHAR(512) NOT NULL,
+ `companyId` VARCHAR(191) NULL,
+ `subscriptionId` VARCHAR(191) NULL,
+ `retired` BOOLEAN NOT NULL DEFAULT false,
+ `leaseId` VARCHAR(64) NULL,
+ `lockedUntil` DATETIME(3) NULL,
+ `nextAttemptAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ `attempts` INTEGER NOT NULL DEFAULT 0,
+ `lastErrorCode` VARCHAR(64) NULL,
+ `lastVerifiedAt` DATETIME(3) NULL,
+ `acknowledgedAt` DATETIME(3) NULL,
+ `state` VARCHAR(64) NULL,
+ `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ `updatedAt` DATETIME(3) NOT NULL,
+ UNIQUE INDEX `GooglePlayPurchaseSync_purchaseToken_key`(`purchaseToken`),
+ INDEX `GooglePlayPurchaseSync_retired_nextAttemptAt_idx`(`retired`, `nextAttemptAt`),
+ INDEX `GooglePlayPurchaseSync_companyId_idx`(`companyId`),
+ PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

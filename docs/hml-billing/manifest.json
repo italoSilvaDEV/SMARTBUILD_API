@@ -1,0 +1,28 @@
+{
+  "kind": "HML preparation only; not a deployable source release",
+  "date": "2026-11-07",
+  "apiBaseCommit": "6e030bc7d99b911f6da0d23327a9470b55cd8917",
+  "apiBranch": "new-hml",
+  "uncommittedChanges": true,
+  "migrations": [
+    {
+      "path": "prisma\\migrations\\20261106220000_explicit_office_permission_policy\\migration.sql",
+      "sha256": "1E97858E6963B86E70EAB57CE8934A5062E1F870DEC6150C44700CE82C4F006C"
+    },
+    {
+      "path": "prisma\\migrations\\20261106223000_pdf_upload_ownership\\migration.sql",
+      "sha256": "22AB90A185344318D62EB304B24E0867B3C381D23BD4A99101F55A95E1193BB8"
+    },
+    {
+      "path": "prisma\\migrations\\20261106230000_google_play_sync\\migration.sql",
+      "sha256": "328B2A1B36437AA1F5049DDF3620BE18DD10B5F0831F91770335FA1193DCD622"
+    },
+    {
+      "path": "prisma\\migrations\\20261106233000_billing_purchase_coordination\\migration.sql",
+      "sha256": "A1549AD294D4D27DF33180F019B6AE258382F901186EA8BA0871B889853144BC"
+    }
+  ],
+  "remoteHistoryVerified": false,
+  "aabGenerated": false,
+  "productionTouched": false
+}

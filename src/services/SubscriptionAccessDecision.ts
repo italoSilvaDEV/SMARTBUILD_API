@@ -1,12 +1,13 @@
 import { resolveEffectivePermissions } from '../utils/planPermissions';
 
-// TASK-219: evaluation only. Not connected to authentication or billing writes.
+// Pure company-level decision shared by local web status and mobile authentication.
 export type AccessState = 'active' | 'trial' | 'grace' | 'non_renewing' | 'pending' | 'suspended' | 'expired' | 'revoked';
 export type SubscriptionSnapshot = {
   id: string;
   companyId: string;
   planId: string;
   billingProvider: string;
+  plan?: { validityType: string } | null;
   startDate: Date;
   endDate: Date;
   isActive: boolean;
@@ -25,6 +26,7 @@ export type AccessInput = {
   extraEmployees: number;
   officePermissions: string[];
   officeName?: string | null;
+  legacyPlanPermissions?: boolean;
   hasCompanyAccess: boolean;
   pendingSubscription: boolean;
   subscriptions: readonly SubscriptionSnapshot[];
@@ -43,6 +45,16 @@ export type AccessDecision = {
   paymentFailed: boolean;
 };
 
+// A current subscription cannot authorize the unrelated plan stored on a company.
+// This detects an inconsistency only; it never chooses or persists a replacement.
+export function hasSubscriptionPlanConflict(
+  companyId: string,
+  planId: string | null | undefined,
+  subscription: { companyId: string; planId: string; isActive: boolean } | null | undefined,
+) {
+  return Boolean(subscription?.isActive && subscription.companyId === companyId && subscription.planId !== planId);
+}
+
 function evaluateRow(row: SubscriptionSnapshot, free: boolean, now: number) {
   const start = row.startDate.getTime();
   const end = row.endDate.getTime();
@@ -58,15 +70,16 @@ function evaluateRow(row: SubscriptionSnapshot, free: boolean, now: number) {
   if (!row.isActive) return 'deny';
   if (free) return end > now ? 'allow' : 'deny';
   if (row.billingProvider === 'stripe') {
-    // Local flags cannot distinguish cancel-at-period-end, failure and stale state.
-    // Do not silently replace the existing live Stripe lookup with a date rule.
-    if (row.paymentFailed || row.stripeSubscriptionCanceled || end <= now) return 'review';
+    // Match the existing paid Stripe web status: local expiry alone is not authoritative.
+    // Financial ambiguity still requires review; no provider state is inferred here.
+    if (row.paymentFailed || row.stripeSubscriptionCanceled) return 'review';
     return 'allow';
   }
   if (row.billingProvider === 'apple' || row.billingProvider === 'google') {
     if (row.appleBillingStatus === 'refunded' || row.appleBillingStatus === 'expired') return 'deny';
     if (end <= now) return 'deny';
-    if (row.paymentFailed) return 'review'; // Grace versus suspension is not encoded by this boolean.
+    if (row.billingProvider === 'apple' && row.appleBillingStatus === 'grace') return 'allow'; // Persisted only with the provider-confirmed grace end.
+    if (row.paymentFailed) return 'review'; // A boolean alone is not evidence of grace.
     return 'allow';
   }
   return 'review'; // Legacy paid grants require classification, not price inference.
@@ -79,22 +92,25 @@ export function evaluateSubscriptionAccess(input: AccessInput): AccessDecision {
     validityType: input.plan?.validityType ?? null,
     validityDuration: input.plan?.validityDuration ?? null,
     permissions: decision === 'allow' && input.plan
-      ? resolveEffectivePermissions(input.plan.permissions, input.officePermissions, input.officeName) : [],
+      ? resolveEffectivePermissions(input.plan.permissions, input.officePermissions, input.officeName, input.legacyPlanPermissions) : [],
     seatLimit: input.allowedEmployees + input.extraEmployees,
     autoRenewing: row?.autoRenewing ?? null,
-    paymentFailed: row?.paymentFailed ?? false,
+    paymentFailed: decision === 'allow' && row && hasConfirmedStoreGrace(row) ? false : row?.paymentFailed ?? false,
   });
   if (!input.hasCompanyAccess) return result('deny', 'company_access_required');
   if (!input.plan) return result('deny', 'plan_missing');
   if (!Number.isFinite(input.now.getTime()) || ![input.allowedEmployees, input.extraEmployees].every(n => Number.isInteger(n) && n >= 0)) {
     return result('review', 'invalid_snapshot');
   }
-  const rows = input.subscriptions.filter(row => row.companyId === input.companyId);
+  const rows = input.subscriptions.filter(row => row.companyId === input.companyId
+    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime()));
   if (new Set(rows.map(row => row.id)).size !== rows.length) return result('review', 'duplicate_snapshot');
+  // A local expiry is not proof that a second active billing record was closed.
+  if (rows.filter(row => row.isActive).length > 1) return result('review', 'multiple_subscriptions');
   const evaluated = rows.map(row => ({ row, decision: evaluateRow(row, input.plan!.validityType === 'FREE', input.now.getTime()) }));
   const candidates = evaluated.filter(item => item.decision !== 'deny');
-  if (input.pendingSubscription) {
-    return result(candidates.length ? 'review' : 'deny', candidates.length ? 'pending_conflicts_with_subscription' : 'pending_subscription');
+  if (input.pendingSubscription && !candidates.length) {
+    return result('deny', 'pending_subscription');
   }
   if (candidates.length > 1) return result('review', 'multiple_subscriptions');
   const candidate = candidates[0];
@@ -133,4 +149,47 @@ export function resolveMappedStorePlan(productId: string, mappings: readonly { p
   const matches = mappings.filter(mapping => mapping.productId === productId);
   if (matches.length !== 1 || !matches[0].planId.trim()) return null;
   return matches[0].planId;
+}
+
+function hasConfirmedStoreGrace(row: SubscriptionSnapshot) {
+  return row.billingProvider !== 'stripe' && (row.confirmedState === 'grace'
+    || row.billingProvider === 'apple' && row.appleBillingStatus === 'grace');
+}
+
+// Compatibility projection for existing consumers. No database/provider calls or writes.
+// Stripe financial flags remain separate from isExpired, exactly as in the web contract.
+export function resolveCompanySubscriptionStatus<T extends SubscriptionSnapshot>(input: {
+  companyId: string;
+  plan: AccessInput['plan'];
+  allowedEmployees: number;
+  extraEmployees: number;
+  pendingSubscription: boolean;
+  subscriptions: readonly T[];
+  now: Date;
+}) {
+  const active = input.subscriptions.filter(row => row.companyId === input.companyId && row.isActive
+    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime()));
+  const subscription = active.length === 1 ? active[0] : null;
+  const access = evaluateSubscriptionAccess({ ...input, subscriptions: active,
+    hasCompanyAccess: true, officePermissions: [], officeName: 'Owner' });
+  const conflict = active.length > 1 ? 'multiple_subscriptions'
+    : hasSubscriptionPlanConflict(input.companyId, input.plan?.id, subscription)
+      ? 'company_subscription_plan_mismatch' : null;
+  const paid = input.plan && input.plan.validityType !== 'FREE';
+  const stripeFinancialReview = paid && subscription?.billingProvider === 'stripe'
+    && !subscription.confirmedState && access.reason === 'provider_or_legacy_state_required'
+    && (subscription.paymentFailed || subscription.stripeSubscriptionCanceled)
+    && Number.isFinite(subscription.startDate.getTime()) && Number.isFinite(subscription.endDate.getTime())
+    && subscription.endDate >= subscription.startDate && subscription.startDate <= input.now;
+  const isExpired = !!conflict || (access.decision !== 'allow' && !(stripeFinancialReview && !input.pendingSubscription));
+  const accessIssue = conflict || (access.decision === 'review' && !stripeFinancialReview ? access.reason : null);
+  return {
+    subscription, access, accessIssue, isExpired,
+    paymentFailed: paid && subscription
+      ? (hasConfirmedStoreGrace(subscription) && access.decision === 'allow'
+        ? false : subscription.paymentFailed)
+      : false,
+    stripeSubscriptionCanceled: paid && subscription?.billingProvider === 'stripe' ? subscription.stripeSubscriptionCanceled : false,
+    permissions: isExpired ? [] : input.plan?.permissions ?? [],
+  };
 }

@@ -375,6 +375,7 @@ export class UserMultiCompanyController {
         planPermissions,
         permissions,
         selectedOffice?.name,
+        selectedOffice?.legacyPlanPermissions === true,
       );
 
       const token = Jwt.sign(

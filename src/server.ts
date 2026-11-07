@@ -1,3 +1,4 @@
+import { setupGooglePlayBillingJob } from './jobs/googlePlayBillingJob';
 import express from 'express';
 import { accountDeletionRoutes } from './routes/accountDeletionRoutes';
 import { setupAppAnalyticsRetentionJob } from './jobs/appAnalyticsRetentionJob';
@@ -85,6 +86,7 @@ app.use(express.static('public'));
   setupTrackingRetentionJob();
   setupMetaPurchaseRetryJob();
   setupAppleBillingStatusJob();
+  setupGooglePlayBillingJob();
   setupAndroidBillingReportingJob();
   setupAppAnalyticsRetentionJob();
 })();

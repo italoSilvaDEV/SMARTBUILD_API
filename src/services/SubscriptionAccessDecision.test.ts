@@ -14,7 +14,7 @@ const input: AccessInput = {
 };
 const evaluate = (patch: Partial<SubscriptionSnapshot>) => evaluateSubscriptionAccess({ ...input, subscriptions: [{ ...row, ...patch }] });
 
-describe('company subscription decision, offline comparison only', () => {
+describe('company subscription decision with offline snapshots', () => {
   it('preserves the annual contract, company seats and role/plan intersection', () => {
     expect(evaluateSubscriptionAccess(input)).toMatchObject({ decision: 'allow', planId: 'plan-annual', validityType: 'ANNUAL', validityDuration: 1, seatLimit: 3, permissions: ['invoices'] });
   });
@@ -51,8 +51,10 @@ describe('company subscription decision, offline comparison only', () => {
   it('does not infer grace from a paymentFailed boolean', () => {
     expect(evaluate({ billingProvider: 'apple', paymentFailed: true }).decision).toBe('review');
   });
-  it('flags expired Stripe local dates and cancel flags for comparison, without changing live Stripe behavior', () => {
-    expect(evaluate({ endDate: now }).decision).toBe('review');
+  it('preserves paid Stripe active state despite local expiry, but keeps financial ambiguity under review', () => {
+    expect(evaluate({ endDate: now }).decision).toBe('allow');
+    expect(evaluate({ endDate: new Date('2026-10-01') }).decision).toBe('allow');
+    expect(evaluate({ paymentFailed: true, endDate: now }).decision).toBe('review');
     expect(evaluate({ stripeSubscriptionCanceled: true }).decision).toBe('review');
   });
   it('retains valid stored entitlement without depending on a network request', () => {
@@ -64,7 +66,7 @@ describe('company subscription decision, offline comparison only', () => {
   });
   it('does not invent a subscription for a pending registration', () => {
     expect(evaluateSubscriptionAccess({ ...input, pendingSubscription: true, subscriptions: [] }).decision).toBe('deny');
-    expect(evaluateSubscriptionAccess({ ...input, pendingSubscription: true }).decision).toBe('review');
+    expect(evaluateSubscriptionAccess({ ...input, pendingSubscription: true }).decision).toBe('allow');
   });
   it('keeps a dated FREE grant valid and expires it at the boundary', () => {
     const free = { ...input, plan: { ...input.plan!, validityType: 'FREE' } };
