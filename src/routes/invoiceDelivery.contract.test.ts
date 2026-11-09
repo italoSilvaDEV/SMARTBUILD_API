@@ -132,6 +132,13 @@ describe('the controller uses the invoice authorized by the middleware', () => {
     await method(name, { prisma: { invoice: { findFirst } } })({ params: { invoiceId: '1001' }, body, authorizedInvoiceId: 'invoice-a' }, response());
     expect((findFirst.mock.calls[0] as any)[0].where).toMatchObject({ id: 'invoice-a', companyId: 'company-a' });
   });
+  it('sendInvoice without a bound id answers 404 and never queries another invoice', async () => {
+    const findFirst = jest.fn(async () => ({ id: 'other-invoice' }));
+    const res = response();
+    await method('sendInvoice', { prisma: { invoice: { findFirst } } })({ params: { invoiceId: 'invoice-a' }, body: { userId: 'u', companyId: 'company-a', idPdfProject: 'pdf' } }, res);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
   it('generateInvoicePdf reads by the bound id', async () => {
     const findFirst = jest.fn(async () => null);
     await method('generateInvoicePdf', { prisma: { invoice: { findFirst } } })({ params: { invoiceId: '1001' }, query: { companyId: 'company-a' }, authorizedInvoiceId: 'invoice-a' }, response());
