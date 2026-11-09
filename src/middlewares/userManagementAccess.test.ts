@@ -25,4 +25,17 @@ test('company-scoped unlink does not require authority over unrelated companies'
 test('unrelated target cannot be edited by forging company',async()=>{target={company_id:'other',companies:[]};expect((await request(app).put('/user').set('Authorization','session').send({id:'target',company_id:'company'})).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
 test('database failure denies access',async()=>{db.company.findUnique.mockRejectedValue(new Error('offline'));expect((await call()).status).toBe(503);expect(handler).not.toHaveBeenCalled();});
 
+describe('own role changes',()=>{
+const offices:any={worker:{name:'Worker',company_id:'company',legacyPlanPermissions:true},owner:{name:'Owner',company_id:'company',legacyPlanPermissions:false},admin:{name:'Administrator',company_id:'company',legacyPlanPermissions:false}};
+const legacyWorker={...actor,office_id:'worker',office:{...role,name:'Worker',legacyPlanPermissions:true},companies:[]};
+const put=(body:any)=>request(app).put('/user').set('Authorization','session').send({company_id:'company',...body});
+beforeEach(()=>{db.office.findUnique.mockImplementation(async({where}:any)=>offices[where.id]??null);db.user.findUnique.mockResolvedValue(legacyWorker);});
+test.each([['office.id',{id:'actor',office:{id:'owner'}}],['office_id',{id:'actor',office_id:'owner'}],['Administrator',{id:'actor',office:{id:'admin'}}]])('a legacy worker cannot promote themself through %s',async(_n,body)=>{const res=await put(body);expect(res.status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('a harmless office_id cannot hide a different office.id',async()=>{expect((await put({id:'actor',office_id:'worker',office:{id:'owner'}})).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('saving the same role keeps working',async()=>{expect((await put({id:'actor',office:{id:'worker'},name:'New'})).status).toBe(204);});
+test('the role of the selected company decides for multi-company users',async()=>{db.user.findUnique.mockResolvedValue({...legacyWorker,office_id:'owner',companies:[{companyId:'company',office_id:'worker'}]});expect((await put({id:'actor',office:{id:'owner'}})).status).toBe(403);});
+test('an Owner may still change their own role',async()=>{db.user.findUnique.mockResolvedValue({...actor,office_id:'owner',companies:[]});expect((await put({id:'actor',office:{id:'admin'}})).status).toBe(204);});
+test('a manager can still change another user role',async()=>{db.user.findUnique.mockImplementation(async({where}:any)=>where.id==='actor'?actor:{office_id:'worker',company_id:'company',companies:[]});expect((await put({id:'target',office:{id:'admin'}})).status).toBe(204);});
+});
+
 test('preserves an explicitly identified legacy shared office through valid company membership',async()=>{db.user.findUnique.mockResolvedValue({...actor,office:{...role,company_id:'legacy-other',legacyPlanPermissions:true}});expect((await call()).status).toBe(204);});
