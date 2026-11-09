@@ -16,6 +16,24 @@ test('cross-project batch denied before any controller write',async()=>{await in
 test('anonymous denied',async()=>{await invoke({serviceId:'service',invoiceId:'invoice'},'');expect(res.status).toHaveBeenCalledWith(401);expect(next).not.toHaveBeenCalled();});
 test('database failure denies safely',async()=>{db.project.findUnique.mockRejectedValue(Error('offline'));await invoke({serviceId:'service',invoiceId:'invoice'});expect(res.status).toHaveBeenCalledWith(503);expect(next).not.toHaveBeenCalled();});
 test('empty batch denied',async()=>{await invoke([]);expect(res.status).toHaveBeenCalledWith(400);expect(next).not.toHaveBeenCalled();});
+describe('cost on a receipt without project',()=>{
+ const refs:any=[{kind:'service',field:'serviceProjectId'},{kind:'costInvoice',field:'invoice_cost_project_id'}];
+ const cost=(actor='worker',service='service')=>requireProjectWorkAccess(refs,'body',true)({userId:actor,body:[{serviceProjectId:service,invoice_cost_project_id:'receipt',userId:actor}]} as any,res,next);
+ const receipt=(patch:object)=>db.invoiceCostProject.findUnique.mockResolvedValue({project_id:null,autorId:null,costProject:[],...patch});
+ const denied=()=>{expect(res.status).toHaveBeenCalledWith(403);expect(next).not.toHaveBeenCalled();};
+ test('uploader saves the cost on the service it is assigned to',async()=>{receipt({autorId:'worker'});await cost();expect(next).toHaveBeenCalledTimes(1);});
+ test('another user cannot use a receipt just uploaded',async()=>{receipt({autorId:'someone-else'});await cost();denied();});
+ test('unattributed receipt without costs cannot be claimed',async()=>{receipt({});await cost();denied();});
+ test('uploader still needs assignment',async()=>{receipt({autorId:'worker'});db.userServiceProject.findFirst.mockResolvedValue(null);await cost();denied();});
+ test('expired subscription denies the uploader',async()=>{receipt({autorId:'worker'});(canAccessCompanySubscription as jest.Mock).mockResolvedValue(false);await cost();denied();});
+ test('an own receipt alone identifies no project',async()=>{receipt({autorId:'worker'});await requireProjectWorkAccess([{kind:'costInvoice',field:'id'}],'params')({userId:'worker',params:{id:'receipt'},body:{}} as any,res,next);denied();});
+ test('legacy receipt resolves its project from existing costs',async()=>{receipt({costProject:[{serviceProjectId:'service'}]});(canUseCompanyFeature as jest.Mock).mockResolvedValue(true);await cost('admin');expect(next).toHaveBeenCalled();});
+ test('legacy receipt cannot be attached to another project',async()=>{receipt({costProject:[{serviceProjectId:'service'}]});(canUseCompanyFeature as jest.Mock).mockResolvedValue(true);await cost('admin','other');denied();});
+ const edit=(actor:string)=>requireProjectWorkAccess([{kind:'cost',field:'cost_project_id'}],'params')({userId:actor,params:{cost_project_id:'cost'},body:{}} as any,res,next);
+ test('administrator edits a legacy cost through its service',async()=>{db.costProject.findUnique.mockResolvedValue({invoice_cost_project_id:'receipt',serviceProjectId:'service'});receipt({});(canUseCompanyFeature as jest.Mock).mockResolvedValue(true);await edit('admin');expect(next).toHaveBeenCalled();expect(canUseCompanyFeature).toHaveBeenCalledWith('admin','company','Projects');});
+ test('legacy cost of another company is denied',async()=>{db.costProject.findUnique.mockResolvedValue({invoice_cost_project_id:'receipt',serviceProjectId:'service'});receipt({});(canUseCompanyFeature as jest.Mock).mockResolvedValue(false);db.userServiceProject.findFirst.mockResolvedValue(null);await edit('outsider');denied();});
+ test('cost with no service and no linked receipt is denied',async()=>{db.costProject.findUnique.mockResolvedValue({invoice_cost_project_id:'receipt',serviceProjectId:null});receipt({autorId:'worker'});await edit('worker');denied();});
+});
 const time=async(actor='worker')=>requireWorkerTimeAccess({userId:actor,params:{companyId:'company',workerId:'worker'}} as any,res,next);
 test('worker can read own time cards with subscription',async()=>{await time();expect(next).toHaveBeenCalled();});
 test('other worker cannot read time cards',async()=>{await time('other-worker');expect(res.status).toHaveBeenCalledWith(403);expect(next).not.toHaveBeenCalled();});

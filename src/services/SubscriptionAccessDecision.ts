@@ -55,6 +55,13 @@ export function hasSubscriptionPlanConflict(
   return Boolean(subscription?.isActive && subscription.companyId === companyId && subscription.planId !== planId);
 }
 
+// Paying during a FREE grant leaves both rows active until the grant ends. Only the paid
+// contract already applied to the company supersedes it; rows of unknown type stay conflicts.
+function withoutSupersededFree<T extends SubscriptionSnapshot>(rows: readonly T[], companyPlanId?: string | null) {
+  const paidApplied = rows.some(row => row.isActive && row.plan && row.plan.validityType !== 'FREE' && row.planId === companyPlanId);
+  return paidApplied ? rows.filter(row => !(row.isActive && row.plan?.validityType === 'FREE')) : [...rows];
+}
+
 function evaluateRow(row: SubscriptionSnapshot, free: boolean, now: number) {
   const start = row.startDate.getTime();
   const end = row.endDate.getTime();
@@ -102,8 +109,8 @@ export function evaluateSubscriptionAccess(input: AccessInput): AccessDecision {
   if (!Number.isFinite(input.now.getTime()) || ![input.allowedEmployees, input.extraEmployees].every(n => Number.isInteger(n) && n >= 0)) {
     return result('review', 'invalid_snapshot');
   }
-  const rows = input.subscriptions.filter(row => row.companyId === input.companyId
-    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime()));
+  const rows = withoutSupersededFree(input.subscriptions.filter(row => row.companyId === input.companyId
+    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime())), input.plan.id);
   if (new Set(rows.map(row => row.id)).size !== rows.length) return result('review', 'duplicate_snapshot');
   // A local expiry is not proof that a second active billing record was closed.
   if (rows.filter(row => row.isActive).length > 1) return result('review', 'multiple_subscriptions');
@@ -167,8 +174,8 @@ export function resolveCompanySubscriptionStatus<T extends SubscriptionSnapshot>
   subscriptions: readonly T[];
   now: Date;
 }) {
-  const active = input.subscriptions.filter(row => row.companyId === input.companyId && row.isActive
-    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime()));
+  const active = withoutSupersededFree(input.subscriptions.filter(row => row.companyId === input.companyId && row.isActive
+    && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime())), input.plan?.id);
   const subscription = active.length === 1 ? active[0] : null;
   const access = evaluateSubscriptionAccess({ ...input, subscriptions: active,
     hasCompanyAccess: true, officePermissions: [], officeName: 'Owner' });

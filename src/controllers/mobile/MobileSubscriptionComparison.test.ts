@@ -47,7 +47,7 @@ describe('mobile login keeps existing responses during subscription comparison',
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([record]);
     const original = await buildAuthResponse('user', 'company');
     expect(prisma.subscription.findMany).toHaveBeenCalledTimes(1);
-    expect(prisma.subscription.findMany).toHaveBeenCalledWith({ where: { companyId: 'company', isActive: true, NOT: { plan: { validityType: 'FREE' }, endDate: { lte: expect.any(Date) } } }, orderBy: { startDate: 'desc' }, take: 2 });
+    expect(prisma.subscription.findMany).toHaveBeenCalledWith({ where: { companyId: 'company', isActive: true, NOT: { plan: { validityType: 'FREE' }, endDate: { lte: expect.any(Date) } } }, orderBy: { startDate: 'desc' }, take: 10, include: { plan: { select: { validityType: true } } } });
     process.env.SUBSCRIPTION_ACCESS_COMPARE = 'true';
     const compared = await buildAuthResponse('user', 'company');
     expect(compared).toEqual(original);

@@ -1,4 +1,4 @@
-import { requireUserManagementAccess, requireOwnUserRecord } from "../middlewares/userManagementAccess";
+import { requireUserManagementAccess, requireOwnUserRecord, routeOwnProfileUpdate } from "../middlewares/userManagementAccess";
 import { Router } from "express"
 import { UserController } from "../controllers/User/UserController"
 import { UserMultiCompanyController } from "../controllers/User/UserMultiCompanyController";
@@ -28,7 +28,7 @@ userRoutes.post("/user",
   User.create)
 
 //update user
-userRoutes.put("/user", checkToken, requireUserManagementAccess, User.update)
+userRoutes.put("/user", checkToken, routeOwnProfileUpdate(User.updateUserProfile), requireUserManagementAccess, User.update)
 
 // app
 userRoutes.put("/user/update-profile", checkToken, requireOwnUserRecord, User.updateUserProfile);

@@ -69,7 +69,7 @@ changeOrderRoutes.patch(
 changeOrderRoutes.get(
     "/by-project/:projectId",
     checkToken,
-    access('Estimates', [ref('project', 'params.projectId')]),
+    access(['Estimates', 'Projects'], [ref('project', 'params.projectId')]),
     getAllChangeOrderByProjectController.handle
 );
 

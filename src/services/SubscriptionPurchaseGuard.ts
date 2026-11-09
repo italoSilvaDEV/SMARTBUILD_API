@@ -65,6 +65,18 @@ export async function assertNoForeignSubscription(db: Pick<Prisma.TransactionCli
   }
 }
 
+// Once the store has charged, inactive history cannot justify refusing the receipt.
+// Only a live contract with another provider can; FREE grants are not contracts.
+export async function assertNoActiveForeignContract(db: Pick<Prisma.TransactionClient, 'subscription'>, companyId: string, target: PurchaseProvider) {
+  const rows = await db.subscription.findMany({
+    where: { companyId, billingProvider: { not: target }, isActive: true },
+    select: { id: true, billingProvider: true, isActive: true, paymentFailed: true, endDate: true,
+      stripeSubscriptionCanceled: true, appleBillingStatus: true, plan: { select: { validityType: true } } },
+  });
+  const provider = conflictingProvider(rows, target);
+  if (provider) throw new SubscriptionPurchaseConflict(provider);
+}
+
 export async function assertNoPendingGooglePurchase(db: Pick<Prisma.TransactionClient, 'googlePlayPurchaseSync'>, companyId: string) {
   const unresolved = await db.googlePlayPurchaseSync.findFirst({ where: { companyId, retired: false,
     state: { in: ['SUBSCRIPTION_STATE_PENDING', 'SUBSCRIPTION_STATE_ON_HOLD', 'SUBSCRIPTION_STATE_PAUSED'] } }, select: { id: true } });

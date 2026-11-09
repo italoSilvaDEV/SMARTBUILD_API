@@ -81,9 +81,11 @@ export class CreateInvoiceCostProjectController {
             }
             try {
                 let authorized = false;
-                await requireProjectWorkAccess([{kind:'project',field:'project_id'}])(req, res, () => { authorized = true; });
+                // Crew identifies the work by service. Its receipts stay unlinked so project totals do not change.
+                await requireProjectWorkAccess([{kind:'project',field:'project_id',optional:true},{kind:'service',field:'serviceProjectId',optional:true}])(req, res, () => { authorized = true; });
                 if (!authorized) { if (req.file) deleteFile(req.file.path); return; }
-                const { project_id } = req.body;
+                const project_id = req.body.project_id || undefined;
+                const autorId = project_id ? undefined : (req as any).userId as string;
                 let result;
 
                 if (!req.file) {
@@ -91,6 +93,7 @@ export class CreateInvoiceCostProjectController {
                         data: {
                             project_cost_invoice_exists: false,
                             project_id: project_id,
+                            autorId,
                         },
                     });
                 } else {
@@ -130,6 +133,7 @@ export class CreateInvoiceCostProjectController {
                             uri: file,
                             project_cost_invoice_exists: true,
                             project_id: project_id,
+                            autorId,
                         },
                     });
                 }

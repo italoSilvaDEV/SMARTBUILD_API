@@ -1,4 +1,4 @@
-import { requireCompanyResourceAccess as access, ref } from '../middlewares/companyResourceAccess';
+import { bindInvoiceByNumber, requireCompanyResourceAccess as access, requirePaidReceiptOfInvoice, ref } from '../middlewares/companyResourceAccess';
 import { Router } from "express";
 import { CustomInvoiceController } from "../controllers/invoice/CustomInvoiceController";
 import { MobileStandaloneCustomInvoiceController } from "../controllers/invoice/MobileStandaloneCustomInvoiceController";
@@ -23,24 +23,25 @@ customInvoiceRoutes.get("/custom/invoice/global/:companyId/generate-number", che
 customInvoiceRoutes.get("/custom/invoices/:projectId", checkToken, access('Invoice', [ref('project', 'params.projectId'), ref('pdf', 'body.idPdfProject', true)]), customInvoiceController.getInvoicesByProject.bind(customInvoiceController));
 
 // Enviar invoice
-customInvoiceRoutes.post("/custom/invoice/:invoiceId/send", checkToken, access('Invoice', [ref('invoice', 'params.invoiceId'), ref('pdf', 'body.idPdfProject', true)]), customInvoiceController.sendInvoice.bind(customInvoiceController));
+customInvoiceRoutes.post("/custom/invoice/:invoiceId/send", checkToken, access('Invoice', [ref('company', 'body.companyId'), ref('pdf', 'body.idPdfProject', true)]), bindInvoiceByNumber('body', ['custom', 'stripe', 'quickbooks']), customInvoiceController.sendInvoice.bind(customInvoiceController));
 
 // Cancelar invoice
 customInvoiceRoutes.post("/custom/invoice/:invoiceId/cancel", checkToken, access('Invoice', [ref('invoice', 'params.invoiceId'), ref('pdf', 'body.idPdfProject', true)]), customInvoiceController.cancelInvoice.bind(customInvoiceController));
 
 // Adicionar esta nova rota
-customInvoiceRoutes.get("/custom/invoice/:invoiceId/pdf", checkToken, access('Invoice', [ref('invoice', 'params.invoiceId'), ref('pdf', 'body.idPdfProject', true)]), customInvoiceController.generateInvoicePdf.bind(customInvoiceController));
+customInvoiceRoutes.get("/custom/invoice/:invoiceId/pdf", checkToken, access('Invoice', [ref('company', 'query.companyId')]), bindInvoiceByNumber('query'), customInvoiceController.generateInvoicePdf.bind(customInvoiceController));
 
 // Adicionar esta nova rota para enviar invoice para múltiplos destinatários
 customInvoiceRoutes.post(
   "/custom/invoice/:invoiceId/send-multiple",
   checkToken,
-  access('Invoice', [ref('invoice', 'params.invoiceId'), ref('pdf', 'body.idPdfProject', true)]),
+  access('Invoice', [ref('company', 'body.companyId')]),
+  bindInvoiceByNumber('body', ['custom', 'stripe']),
   customInvoiceController.sendInvoiceMultiple.bind(customInvoiceController)
 );
 
 // Enviar confirmação de pagamento
-customInvoiceRoutes.post("/invoice/send/paid", checkToken, access('Invoice', [ref('invoice', 'body.invoiceId'), ref('pdf', 'body.pdfInvoicePaidId', true)]), customInvoiceController.sendInvoicePaid.bind(customInvoiceController));
+customInvoiceRoutes.post("/invoice/send/paid", checkToken, access('Invoice', [ref('invoice', 'body.invoiceId')]), requirePaidReceiptOfInvoice, customInvoiceController.sendInvoicePaid.bind(customInvoiceController));
 
 // Atualizar invoice personalizado
 customInvoiceRoutes.put("/custom/invoice/:invoiceId", checkToken, access('Invoice', [ref('invoice', 'params.invoiceId'), ref('pdf', 'body.idPdfProject', true)]), customInvoiceController.updateInvoice.bind(customInvoiceController));

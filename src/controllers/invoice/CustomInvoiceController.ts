@@ -548,7 +548,7 @@ export class CustomInvoiceController {
       // Buscar a fatura com todas as informações necessárias
       const invoice = await prisma.invoice.findFirst({
         where: {
-          externalInvoiceId: invoiceId,
+          id: (req as any).authorizedInvoiceId,
           companyId: companyId,
           invoiceType: { in: ["custom", "stripe", "quickbooks"] }
         },
@@ -818,7 +818,7 @@ export class CustomInvoiceController {
       // Buscar a fatura com todas as informações necessárias, agora incluindo companyId
       const invoice = await prisma.invoice.findFirst({
         where: {
-          externalInvoiceId: invoiceId,
+          id: (req as any).authorizedInvoiceId,
           companyId: companyId, // Filtrar pelo companyId fornecido
           invoiceType: { in: ["custom", "stripe"] }
         },
@@ -1171,7 +1171,7 @@ export class CustomInvoiceController {
       // Buscar a fatura com todas as informações necessárias
       const invoice = await prisma.invoice.findFirst({
         where: {
-          externalInvoiceId: invoiceId,
+          id: (req as any).authorizedInvoiceId,
           companyId: companyId as string // Adicionar filtro por companyId
         },
         include: {

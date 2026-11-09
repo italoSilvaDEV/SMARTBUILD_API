@@ -12,7 +12,7 @@ import { prisma } from '../utils/prisma';
 import { canUseCompanyFeature } from '../services/CompanyFeatureAccess';
 const request = require('supertest');
 jest.setTimeout(15000);
-jest.mock('../utils/prisma',()=>({prisma:Object.fromEntries(['project','client','estimate','estimateServiceProject','invoice','invoiceItem','serviceProject','pdfProject','user','changeOrder','changeOrderService'].map(key=>[key,{findUnique:jest.fn()}]))}));
+jest.mock('../utils/prisma',()=>({prisma:Object.fromEntries(['project','client','estimate','estimateServiceProject','invoice','invoiceItem','serviceProject','pdfProject','user','changeOrder','changeOrderService'].map(key=>[key,{findUnique:jest.fn(),findFirst:jest.fn()}]))}));
 jest.mock('../services/CompanyFeatureAccess',()=>({canUseCompanyFeature:jest.fn()}));
 const effect=jest.fn((_req,res)=>res.sendStatus(204));
 const checkToken=(req:any,res:any,next:any)=>{if(!req.headers.authorization)return res.sendStatus(401);req.userId='session';next();};
@@ -39,7 +39,7 @@ const app=express();app.use(express.json());app.use('/estimates',router('estimat
 app.use(router('companyRoutes.ts','companyRoutes'));app.use('/extra',router('extraEmployeeRoutes.ts','extraEmployeeRoutes'));
 app.use(router('customInvoiceRoutes.ts','customInvoiceRoutes'));app.use(router('customInvoicePaymentRoutes.ts','invoicePaymentRoutes'));app.use('/changes',router('changeOrderRoutes.ts','default'));
 const db=prisma as any;
-beforeEach(()=>{jest.clearAllMocks();db.changeOrder.findUnique.mockImplementation(async({where}:any)=>({estimateId:where.id}));db.changeOrderService.findUnique.mockImplementation(async({where}:any)=>({changeOrderId:where.id}));(canUseCompanyFeature as jest.Mock).mockResolvedValue(true);const company=(id:string)=>id.startsWith('other')?'other-company':'company';db.project.findUnique.mockImplementation(async({where}:any)=>({company_id:company(where.id)}));db.client.findUnique.mockImplementation(async({where}:any)=>({company_id:company(where.id)}));db.estimate.findUnique.mockImplementation(async({where}:any)=>({project:{company_id:company(where.id)}}));db.invoice.findUnique.mockImplementation(async({where}:any)=>({companyId:company(where.id),project:{company_id:company(where.id)}}));db.invoiceItem.findUnique.mockImplementation(async({where}:any)=>({invoiceId:where.id}));db.estimateServiceProject.findUnique.mockImplementation(async({where}:any)=>({estimateId:where.id}));db.serviceProject.findUnique.mockImplementation(async({where}:any)=>({projectId:where.id}));db.pdfProject.findUnique.mockImplementation(async({where}:any)=>({project_id:where.id}));});
+beforeEach(()=>{jest.clearAllMocks();db.changeOrder.findUnique.mockImplementation(async({where}:any)=>({estimateId:where.id}));db.changeOrderService.findUnique.mockImplementation(async({where}:any)=>({changeOrderId:where.id}));(canUseCompanyFeature as jest.Mock).mockResolvedValue(true);const company=(id:string)=>id.startsWith('other')?'other-company':'company';db.project.findUnique.mockImplementation(async({where}:any)=>({company_id:company(where.id)}));db.client.findUnique.mockImplementation(async({where}:any)=>({company_id:company(where.id)}));db.estimate.findUnique.mockImplementation(async({where}:any)=>({project:{company_id:company(where.id)}}));db.invoice.findUnique.mockImplementation(async({where}:any)=>({companyId:company(where.id),project:{company_id:company(where.id)}}));db.invoice.findFirst.mockResolvedValue({id:'bound'});db.invoiceItem.findUnique.mockImplementation(async({where}:any)=>({invoiceId:where.id}));db.estimateServiceProject.findUnique.mockImplementation(async({where}:any)=>({estimateId:where.id}));db.serviceProject.findUnique.mockImplementation(async({where}:any)=>({projectId:where.id}));db.pdfProject.findUnique.mockImplementation(async({where}:any)=>({project_id:where.id}));});
 const cases:any[]=[
  ['post','/invoices/id/payment',{},'Invoice'],['get','/invoices/id/payment',{},'Invoice'],['put','/invoices/id/payment',{},'Invoice'],
  ['post','/changes/create',{estimateId:'id',projectId:'id',pdfId:'id'},'Estimates'],
@@ -51,8 +51,8 @@ const cases:any[]=[
  ['post','/custom/invoice/mobile/project/id',{},'Invoice'],['put','/custom/invoice/mobile/project/id',{},'Invoice'],
  ['post','/custom/invoice/mobile/standalone',{companyId:'company'},'Invoice'],['get','/custom/invoice/mobile/id',{},'Invoice'],['put','/custom/invoice/mobile/id',{},'Invoice'],
  ['post','/custom/invoice/id',{},'Invoice'],['get','/custom/invoice/id/generate-number',{},'Invoice'],['get','/custom/invoice/global/company/generate-number',{},'Invoice'],
- ['get','/custom/invoices/id',{},'Invoice'],['post','/custom/invoice/id/send',{},'Invoice'],['post','/custom/invoice/id/cancel',{},'Invoice'],['get','/custom/invoice/id/pdf',{},'Invoice'],
- ['post','/custom/invoice/id/send-multiple',{},'Invoice'],['post','/invoice/send/paid',{invoiceId:'id'},'Invoice'],['put','/custom/invoice/id',{},'Invoice'],
+ ['get','/custom/invoices/id',{},'Invoice'],['post','/custom/invoice/1001/send',{companyId:'company'},'Invoice'],['post','/custom/invoice/id/cancel',{},'Invoice'],['get','/custom/invoice/1001/pdf?companyId=company',{},'Invoice'],
+ ['post','/custom/invoice/1001/send-multiple',{companyId:'company'},'Invoice'],['post','/invoice/send/paid',{invoiceId:'id'},'Invoice'],['put','/custom/invoice/id',{},'Invoice'],
 
  ['get','/extra/company/company',{},'User Management'],['post','/extra/company/company',{},'User Management'],['post','/extra/company/company/reduce',{},'User Management'],['post','/costproject/find',{company_id:'company'},'Projects'],
  ['get','/invoice/id',{},'Invoice'],['post','/invoice/id/send',{},'Invoice'],['post','/invoice/id/cancel',{},'Invoice'],['delete','/invoice/delete/id',{},'Invoice'],['post','/invoice/create/item',{invoiceId:'id'},'Invoice'],['put','/invoice/update/item',{invoiceItemId:'id'},'Invoice'],['delete','/invoice/delete/item/id',{},'Invoice'],['patch','/invoice/link-to-project/id',{projectId:'id'},'Invoice'],
@@ -64,6 +64,32 @@ describe.each(cases)('%s %s', (method,url,body,feature)=>{
  test('direct API call with no feature is denied before effects',async()=>{(canUseCompanyFeature as jest.Mock).mockResolvedValue(false);expect((await request(app)[method](url).set('Authorization','session').send(body)).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
  test('anonymous call is denied',async()=>{expect((await request(app)[method](url).send(body)).status).toBe(401);expect(effect).not.toHaveBeenCalled();});
 });
+// R5: each entry is a read proven by a client screen gated by that permission.
+const grant=(allowed:string)=>(canUseCompanyFeature as jest.Mock).mockImplementation(async(_u:string,_c:string,f:string)=>f===allowed);
+const send=(method:string,url:string,body:object)=>(request(app) as any)[method](url).set('Authorization','session').send(body);
+const screenReads:[string,string,object,string[]][]=[
+ ['get','/project/find?company_id=company',{},['Invoice','Time Cards','Job Schedule','Job Dispatch','Estimates']],
+ ['get','/project/find/id',{},['Invoice']],
+ ['get','/project/services-project/id',{},['Time Cards','Reports']],
+ ['get','/time-activies?id=company',{},['Activities']],
+ ['post','/project/schedule',{company_id:'company'},['Job Schedule']],
+ ['post','/service-project/schedule',{company_id:'company'},['Job Dispatch']],
+ ['get','/estimates/project/id',{},['Projects','Invoice']],
+ ['get','/changes/by-project/id',{},['Projects']],
+ ['get','/invoice/id',{},['Projects']],
+];
+describe.each(screenReads)('R5 %s %s',(method,url,body,features)=>{
+ test.each(features)('screen permission %s reaches the read',async feature=>{grant(feature);expect((await send(method,url,body)).status).toBe(204);expect(effect).toHaveBeenCalledTimes(1);});
+ test('an unrelated permission stays denied',async()=>{grant('Catalog');expect((await send(method,url,body)).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
+});
+test.each([
+ ['Invoice','post','/project',{company_id:'company'}],['Invoice','patch','/project/id',{}],['Invoice','delete','/project/delete/id',{}],
+ ['Time Cards','patch','/project/update/status',{id:'id'}],['Reports','patch','/project/id',{}],['Job Schedule','patch','/service-project/update/dates',{id:'id'}],
+ ['Projects','post','/invoice/id/send',{}],['Projects','delete','/invoice/delete/id',{}],['Projects','post','/custom/invoice/id/cancel',{}],
+ ['Projects','post','/changes/create',{estimateId:'id',projectId:'id',pdfId:'id'}],['Activities','get','/project/dashboard/company',{}],
+ ['Invoice','get','/project/dashboard/company',{}],['Time Cards','get','/invoice/company/company',{}],['Invoice','get','/estimates/allestimates/company',{}],
+])('R5 %s alone does not open %s %s',async(feature,method,url,body)=>{grant(feature as string);expect((await send(method as string,url as string,body as object)).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
+test('R5 a screen permission cannot read another company',async()=>{grant('Invoice');(canUseCompanyFeature as jest.Mock).mockImplementation(async(_u:string,c:string,f:string)=>f==='Invoice'&&c==='company');expect((await send('get','/project/find/other-project',{})).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
 test('invoice relinking cannot cross company',async()=>{expect((await request(app).patch('/invoice/link-to-project/id').set('Authorization','session').send({projectId:'other-project'})).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
 test('estimate service cannot come from another company',async()=>{expect((await request(app).put('/estimates/id/service/other-service').set('Authorization','session')).status).toBe(403);expect(effect).not.toHaveBeenCalled();});
 test.each(['get','patch'])('verified public estimate grant preserved for %s',async method=>{const url=method==='get'?'/estimates/id?publicToken=verified-test':'/estimates/id/sign?publicToken=verified-test';expect((await request(app)[method](url)).status).toBe(204);expect(canUseCompanyFeature).not.toHaveBeenCalled();});

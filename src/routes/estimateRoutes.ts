@@ -112,7 +112,7 @@ estimateRoutes.post("/:estimateId/smartbuilder/session/import", checkToken, acce
 estimateRoutes.post("/mobile/manual/:estimateId/regenerate-pdf", checkToken, access('Estimates', [ref('estimate', 'params.estimateId')]), mobileManualEstimateController.regeneratePdf.bind(mobileManualEstimateController));
 
 estimateRoutes.post("/", checkToken, access('Estimates', [ref('project', 'body.projectId'), ref('pdf', 'body.idPdfProject', true)]), estimateController.create);
-estimateRoutes.get("/project/:projectId", checkToken, access('Estimates', [ref('project', 'params.projectId')]), estimateController.findByProject);
+estimateRoutes.get("/project/:projectId", checkToken, access(['Estimates', 'Projects', 'Invoice'], [ref('project', 'params.projectId')]), estimateController.findByProject);
 estimateRoutes.get("/project/:projectId/generate-number", checkToken, access('Estimates', [ref('project', 'params.projectId')]), estimateController.generateNumber);
 estimateRoutes.get("/global/:companyId/generate-number", checkToken, access('Estimates', [ref('company', 'params.companyId')]), estimateController.generateGlobalNumber);
 estimateRoutes.get("/:id", checkTokenOrEstimatePublicAccess, access('Estimates', [ref('estimate', 'params.id')], true), estimateController.findById);

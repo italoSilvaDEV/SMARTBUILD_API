@@ -38,6 +38,22 @@ describe('company subscription decision with offline snapshots', () => {
     expect(evaluateSubscriptionAccess({ ...input, subscriptions: [row, { ...row, id: 'other', billingProvider: 'google' }] }))
       .toMatchObject({ decision: 'review', reason: 'multiple_subscriptions', permissions: [] });
   });
+  describe('FREE grant alongside a paid contract', () => {
+    const free = { ...row, id: 'free', planId: 'free-plan', plan: { validityType: 'FREE' } };
+    const paid = { ...row, plan: { validityType: 'ANNUAL' } };
+    it('uses the paid contract applied to the company, in any order', () => {
+      for (const subscriptions of [[free, paid], [paid, free]]) {
+        expect(evaluateSubscriptionAccess({ ...input, subscriptions })).toMatchObject({ decision: 'allow', subscriptionId: row.id, planId: 'plan-annual' });
+      }
+    });
+    it('keeps the conflict when the FREE grant is the plan applied to the company', () => {
+      const plan = { ...input.plan!, id: 'free-plan', validityType: 'FREE' };
+      expect(evaluateSubscriptionAccess({ ...input, plan, subscriptions: [free, paid] }).reason).toBe('multiple_subscriptions');
+    });
+    it('keeps the conflict between two paid contracts', () => {
+      expect(evaluateSubscriptionAccess({ ...input, subscriptions: [free, paid, { ...paid, id: 'paid-2' }] }).reason).toBe('multiple_subscriptions');
+    });
+  });
   it('flags mismatched company and subscription plans instead of granting higher permissions', () => {
     expect(evaluate({ planId: 'more-expensive' }).reason).toBe('company_subscription_plan_mismatch');
   });

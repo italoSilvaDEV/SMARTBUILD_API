@@ -284,10 +284,37 @@ describe('TASK-219 consumer regressions and remaining characterized discrepancie
     expect(result.candidate.decision).toBe('allow');
     expect(JSON.stringify([paid, history])).toBe(before);
   });
-  it('a still-valid FREE grant and active paid subscription remain a conflict', async () => {
-    const result = await run({ rows: [row(), row({ id: 'trial', planId: 'free-plan', plan: { validityType: 'FREE' } })] });
+  const trial = (patch: object = {}) => row({ id: 'trial', planId: 'free-plan', plan: { validityType: 'FREE' }, startDate: new Date('2026-11-01'), ...patch });
+  const paid = (patch: object = {}) => row({ id: 'paid', plan: { validityType: 'MONTHLY' }, startDate: new Date('2026-10-01'), ...patch });
+
+  it.each(['stripe', 'apple', 'google'])('a valid FREE grant does not conflict with the applied %s contract', async billingProvider => {
+    const contract = paid({ billingProvider });
+    const rows = [trial(), contract];
+    const before = JSON.stringify(rows);
+    const result = await run({ rows });
+    expect(result.web).toMatchObject({ isExpired: false, subscription: { id: 'paid' }, plan: { id: 'plan' }, permissions: ['invoices'] });
+    expect(result.web.accessIssue).toBeUndefined();
+    expect(result.mobile).toMatchObject({ isExpired: false, subscription: { id: 'paid' }, permissions: ['invoices'] });
+    expect(result.candidate).toMatchObject({ decision: 'allow', subscriptionId: 'paid' });
+    expect(JSON.stringify(rows)).toBe(before);
+  });
+  it('a newer FREE grant cannot hide a second paid contract from the bounded query', async () => {
+    const result = await run({ rows: [trial(), paid(), paid({ id: 'paid-2', billingProvider: 'apple', startDate: new Date('2026-09-01') })] });
     expect(result.web.accessIssue).toBe('multiple_subscriptions');
     expect(result.mobile.accessIssue).toBe('multiple_subscriptions');
+  });
+  it('a FREE grant remains a conflict with paid rows not applied to the company', async () => {
+    for (const rows of [[trial(), paid({ planId: 'other' })], [trial(), row({ id: 'unknown-type' })]]) {
+      const result = await run({ rows });
+      expect(result.web.accessIssue).toBe('multiple_subscriptions');
+      expect(result.mobile.accessIssue).toBe('multiple_subscriptions');
+    }
+  });
+  it('the FREE grant cannot override a financial problem on the paid contract', async () => {
+    const result = await run({ rows: [trial(), paid({ paymentFailed: true })] });
+    expect(result.web).toMatchObject({ paymentFailed: true, subscription: { id: 'paid' } });
+    expect(result.mobile).toMatchObject({ paymentFailed: true, subscription: { id: 'paid' } });
+    expect(result.candidate.decision).toBe('review');
   });
 
 });

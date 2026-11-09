@@ -1057,6 +1057,14 @@ export class UserController {
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) return response.status(404).json({ error: "User not found" });
 
+      const isBlank = (value: unknown) => value !== undefined && (typeof value !== "string" || !value.trim());
+      if (isBlank(name)) return response.status(400).json({ error: "Name is required" });
+      if (isBlank(email)) return response.status(400).json({ error: "Email is required" });
+      if (email !== undefined && email !== user.email) {
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) return response.status(400).json({ error: "Email already registered" });
+      }
+
       await prisma.user.update({
         where: { id },
         data: {
@@ -1963,7 +1971,8 @@ export class UserController {
           NOT: { plan: { validityType: 'FREE' }, endDate: { lte: new Date() } },
         },
         orderBy: { startDate: 'desc' },
-        take: 2,
+        take: 10,
+        include: { plan: { select: { validityType: true } } },
       });
       const status = resolveCompanySubscriptionStatus({
         companyId: company_id, plan: planInfo ? { ...planInfo, permissions } : null,

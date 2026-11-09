@@ -1,6 +1,8 @@
 import { prisma } from '../utils/prisma';
-import { evaluateSubscriptionAccess } from './SubscriptionAccessDecision';
+import { resolveEffectivePermissions } from '../utils/planPermissions';
 
+// Route guards decide identity, company membership, role and plan. Subscription state is
+// reported by the status endpoints: routes never denied on it and installed clients rely on that.
 async function checkCompanyAccess(userId: string, companyId: string, feature?: string): Promise<boolean> {
   const actor = await prisma.user.findUnique({ where: { id: userId }, include: {
     office: { include: { userPermissions: { include: { permission: true } } } },
@@ -11,25 +13,22 @@ async function checkCompanyAccess(userId: string, companyId: string, feature?: s
     && actor.company_id == null && actor.companies.length === 0;
   if (master) return true;
   const link = actor.companies.find(row => row.companyId === companyId);
-  const office = link?.office ?? (actor.company_id === companyId ? actor.office : null);
+  if (!link && actor.company_id !== companyId) return false;
+  if (feature === undefined) return true;
+  const office = link?.office ?? actor.office;
   // Existing legacy company creation reused offices; membership remains authoritative.
   if (!office || office.company_id !== companyId && !office.legacyPlanPermissions) return false;
   const company = await prisma.company.findUnique({ where: { id: companyId }, include: {
     Plan: { include: { permissionGroup: { include: { GroupPermissionsList: { include: { Permissions: true } } } } } },
   } });
-  if (!company?.Plan) return false;
-  const now = new Date();
-  const subscriptions = await prisma.subscription.findMany({ where: { companyId, isActive: true,
-    NOT: { plan: { validityType: 'FREE' }, endDate: { lte: now } } }, orderBy: { startDate: 'desc' }, take: 2,
-  });
-  const access = evaluateSubscriptionAccess({ companyId,
-    plan: { ...company.Plan, permissions: company.Plan.permissionGroup.GroupPermissionsList.map(row => row.Permissions.description) },
-    allowedEmployees: company.allowedEmployees ?? 0, extraEmployees: company.extraEmployees ?? 0,
-    officeName: office.name, officePermissions: office.userPermissions.map(row => row.permission.description),
-    legacyPlanPermissions: office.legacyPlanPermissions === true, hasCompanyAccess: true,
-    pendingSubscription: company.mobileSubscriptionStatus === 'pending_subscription', subscriptions, now,
-  });
-  return access.decision === 'allow' && (feature === undefined || access.permissions.includes(feature));
+  if (!company) return false;
+  const officePermissions = office.userPermissions.map(row => row.permission.description);
+  if (!company.Plan) {
+    // No plan to intersect with: the role alone decides.
+    return ['owner', 'administrator'].includes(office.name.trim().toLowerCase()) || officePermissions.includes(feature);
+  }
+  const planPermissions = company.Plan.permissionGroup.GroupPermissionsList.map(row => row.Permissions.description);
+  return resolveEffectivePermissions(planPermissions, officePermissions, office.name, office.legacyPlanPermissions === true).includes(feature);
 }
 
 export function canUseCompanyFeature(userId: string, companyId: string, feature: string): Promise<boolean> {

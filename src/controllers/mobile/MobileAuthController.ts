@@ -2,7 +2,7 @@ import { androidBillingAccess } from '../../services/AndroidBillingAccess';
 import { billingPurchaseCoordinator, billingReference } from '../../services/BillingPurchaseCoordinator';
 import { admitVerifiedBilling, billingCoordinationEnabled, BillingAttemptError } from '../../services/BillingPurchaseCoordinator';
 import { googlePlayBilling } from '../../services/GooglePlayBillingService';
-import { assertNoForeignSubscription } from '../../services/SubscriptionPurchaseGuard';
+import { assertNoActiveForeignContract } from '../../services/SubscriptionPurchaseGuard';
 import { GoogleBillingError } from '../../services/GooglePlayPurchase';
 import { ensureCompanyPlanSetup } from '../../services/MobilePlanSetup';
 import { Request, Response } from "express";
@@ -510,6 +510,7 @@ async function persistVerifiedStoreSubscription(input: {
         companyId: input.companyId,
         endDate: { gt: new Date() },
         isActive: true,
+        NOT: { plan: { validityType: 'FREE' } },
       },
       select: { id: true },
     });
@@ -528,7 +529,7 @@ async function persistVerifiedStoreSubscription(input: {
     if (billingCoordinationEnabled()) {
       if (!await admitVerifiedBilling(tx,input.companyId,input.billingProvider,
         input.purchase.originalTransactionId || input.purchase.transactionId || '',input.purchase.active,existing?[existing.id]:[])) return null;
-    } else if (input.purchase.active) await assertNoForeignSubscription(tx, input.companyId, input.billingProvider);
+    } else if (input.purchase.active) await assertNoActiveForeignContract(tx, input.companyId, input.billingProvider);
     if (input.purchase.active) await ensureCompanyPlanSetup(input.companyId, plan, tx);
 
     await tx.subscription.updateMany({
@@ -619,13 +620,14 @@ async function getCompanyStatus(companyId: string) {
   });
   if (!company) throw new Error("Company not found.");
 
-  // Read at most two active rows in one snapshot: never choose a winner.
+  // One bounded snapshot: a superseded FREE grant must not hide a second paid row.
   const activeSubscriptions = await prisma.subscription.findMany({
     where: { companyId, isActive: true,
       NOT: { plan: { validityType: 'FREE' }, endDate: { lte: new Date() } },
     },
     orderBy: { startDate: "desc" },
-    take: 2,
+    take: 10,
+    include: { plan: { select: { validityType: true } } },
   });
 
 

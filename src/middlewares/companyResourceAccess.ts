@@ -56,9 +56,44 @@ async function companyFor(kind: ResourceKind, id: string): Promise<string | null
   return ids.length && new Set(ids).size === 1 ? ids[0] : null;
 }
 
+// Installed clients address these invoices by number, which repeats across companies.
+// Run after the company was authorized; the controller reads exactly the invoice bound here.
+export function bindInvoiceByNumber(source: 'body' | 'query', invoiceTypes?: string[]): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const invoice = await prisma.invoice.findFirst({
+        where: { externalInvoiceId: req.params.invoiceId, companyId: String(req[source].companyId),
+          ...(invoiceTypes ? { invoiceType: { in: invoiceTypes as any } } : {}) },
+        select: { id: true },
+      });
+      if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+      (req as any).authorizedInvoiceId = invoice.id;
+      return next();
+    } catch {
+      return res.status(503).json({ error: 'Unable to verify resource access' });
+    }
+  };
+}
+
+// Run after the invoice was authorized. A missing id stays with the controller's existing 400.
+export const requirePaidReceiptOfInvoice: RequestHandler = async (req, res, next) => {
+  const { pdfInvoicePaidId, invoiceId } = req.body ?? {};
+  if (!pdfInvoicePaidId) return next();
+  try {
+    const receipt = typeof pdfInvoicePaidId === 'string'
+      ? await prisma.pdfInvoicePaid.findUnique({ where: { id: pdfInvoicePaidId }, select: { invoiceId: true } }) : null;
+    if (!receipt || receipt.invoiceId !== invoiceId) return res.status(403).json({ error: 'Resource access denied' });
+    return next();
+  } catch {
+    return res.status(503).json({ error: 'Unable to verify resource access' });
+  }
+};
+
 // Explicit per-route references avoid guessing what an ambiguous :id represents.
 // Multipart callers must run this AFTER parsing, BEFORE business writes/provider calls.
-export function requireCompanyResourceAccess(feature: string, refs: ResourceRef[], allowPublicEstimate = false): RequestHandler {
+// A feature list is only for reads a client screen gated by one of those permissions depends on.
+export function requireCompanyResourceAccess(feature: string | readonly string[], refs: ResourceRef[], allowPublicEstimate = false): RequestHandler {
+  const features = typeof feature === 'string' ? [feature] : feature;
   return async (req, res, next) => {
     if (allowPublicEstimate && (req as any).publicEstimateAccess === true) return next();
     const userId = (req as any).userId;
@@ -86,10 +121,9 @@ export function requireCompanyResourceAccess(feature: string, refs: ResourceRef[
           companies.push(value);
         }
       }
-      if (new Set(companies).size !== 1 || !await canUseCompanyFeature(userId, companies[0], feature)) {
-        return res.status(403).json({ error: 'Resource access denied' });
-      }
-      return next();
+      if (new Set(companies).size !== 1) return res.status(403).json({ error: 'Resource access denied' });
+      for (const candidate of features) if (await canUseCompanyFeature(userId, companies[0], candidate)) return next();
+      return res.status(403).json({ error: 'Resource access denied' });
     } catch {
       return res.status(503).json({ error: 'Unable to verify resource access' });
     }

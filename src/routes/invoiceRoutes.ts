@@ -16,7 +16,7 @@ const invoiceItemsController = new InvoiceItemsController();
 invoiceRoutes.post("/invoice/:projectId", checkToken, access('Invoice', [ref('project', 'params.projectId'), ref('estimate', 'body.estimateId', true), ref('pdf', 'body.idPdfProject', true)]), unifiedInvoiceController.createInvoice.bind(unifiedInvoiceController));
 
 // Buscar invoice específico por ID
-invoiceRoutes.get("/invoice/:id", checkToken, access('Invoice', [ref('invoice', 'params.id')]), unifiedInvoiceController.getInvoiceById.bind(unifiedInvoiceController));
+invoiceRoutes.get("/invoice/:id", checkToken, access(['Invoice', 'Projects'], [ref('invoice', 'params.id')]), unifiedInvoiceController.getInvoiceById.bind(unifiedInvoiceController));
 
 // Vincular invoice a um projeto (standalone invoices)
 invoiceRoutes.patch("/invoice/link-to-project/:id", checkToken, access('Invoice', [ref('invoice', 'params.id'), ref('project', 'body.projectId')]), unifiedInvoiceController.linkInvoiceToProject.bind(unifiedInvoiceController));

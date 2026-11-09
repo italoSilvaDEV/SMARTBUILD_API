@@ -1,4 +1,4 @@
-import { assertNoForeignSubscription, conflictingProvider, PurchaseRecord, SubscriptionPurchaseConflict } from './SubscriptionPurchaseGuard';
+import { assertNoActiveForeignContract, assertNoForeignSubscription, conflictingProvider, PurchaseRecord, SubscriptionPurchaseConflict } from './SubscriptionPurchaseGuard';
 const now = new Date('2026-11-06T12:00:00Z');
 const past = new Date('2026-01-01');
 const future = new Date('2027-01-01');
@@ -47,6 +47,15 @@ test('queries are company scoped and never mutate data or call providers',async(
   const mock=db(); await assertNoForeignSubscription(mock,'company','stripe',now);
   expect(mock.subscription.findMany.mock.calls[0][0].where).toEqual({companyId:'company',billingProvider:{not:'stripe'}});
   expect(mock.googlePlayPurchaseSync.findMany.mock.calls[0][0].where).toEqual({companyId:'company',retired:false});
+});
+describe('after the store has charged',()=>{
+ const live=(rows:PurchaseRecord[])=>({subscription:{findMany:jest.fn(async({where}:any)=>rows.filter(item=>item.isActive===where.isActive))}}) as any;
+ for(const target of providers) for(const source of providers.filter(p=>p!==target)) {
+  test(`active ${source} still refuses a ${target} receipt`,async()=>{await expect(assertNoActiveForeignContract(live([row(source)]),'company',target)).rejects.toMatchObject({status:409,provider:source});});
+  test(`inactive ${source} history does not refuse a ${target} receipt`,async()=>{await expect(assertNoActiveForeignContract(live([row(source,{isActive:false,endDate:past})]),'company',target)).resolves.toBeUndefined();});
+ }
+ test('FREE grant does not refuse a receipt',async()=>{await expect(assertNoActiveForeignContract(live([row('stripe',{plan:{validityType:'FREE'}})]),'company','apple')).resolves.toBeUndefined();});
+ test('query is limited to live contracts of the company',async()=>{const mock=live([]);await assertNoActiveForeignContract(mock,'company','apple');expect(mock.subscription.findMany.mock.calls[0][0].where).toEqual({companyId:'company',billingProvider:{not:'apple'},isActive:true});});
 });
 test('database failure is not interpreted as no subscription',async()=>{
   const mock=db();mock.subscription.findMany.mockRejectedValue(new Error('offline'));

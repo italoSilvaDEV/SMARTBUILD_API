@@ -52,9 +52,9 @@ projectRoutes.patch("/project/update/location", checkToken, access('Projects', [
 projectRoutes.get(
   "/project/find",
   checkToken,
-  access('Projects', [ref('company', 'query.company_id')]), projectController.getAllProjects.bind(projectController)
+  access(['Projects', 'Invoice', 'Time Cards', 'Job Schedule', 'Job Dispatch', 'Estimates'], [ref('company', 'query.company_id')]), projectController.getAllProjects.bind(projectController)
 );//ok novo modelo
-projectRoutes.get("/project/find/:id", checkToken, access('Projects', [ref('project', 'params.id')]), projectController.getProjectById.bind(projectController));//ok novo modelo
+projectRoutes.get("/project/find/:id", checkToken, access(['Projects', 'Invoice'], [ref('project', 'params.id')]), projectController.getProjectById.bind(projectController));//ok novo modelo
 
 projectRoutes.get("/project/dashboard/:companyId", checkToken, access('Projects', [ref('company', 'params.companyId')]), dashboardProjectController.handle.bind(dashboardProjectController));
 
@@ -172,7 +172,7 @@ projectRoutes.delete('/project/gallery', checkToken, workAccess([{kind:'gallery'
 projectRoutes.get('/project/gallery/:id', galleryProject.find.bind(galleryProject))
 projectRoutes.post('/project/gallery/send-email', checkToken, uploadAttachments.array("attachments", 10), access('Projects', [ref('project', 'body.projectId')]), galleryProject.sendEmail.bind(galleryProject))
 
-projectRoutes.get('/project/services-project/:id', checkToken, access('Projects', [ref('project', 'params.id')]), projectController.findServicesProjectByProjectId.bind(projectController))
+projectRoutes.get('/project/services-project/:id', checkToken, access(['Projects', 'Time Cards', 'Reports'], [ref('project', 'params.id')]), projectController.findServicesProjectByProjectId.bind(projectController))
 
 projectRoutes.get('/project/services-project/history/:id', checkToken, access('Projects', [ref('serviceProject', 'params.id')]), projectController.findHistoryServicesProjectById.bind(projectController))
 
@@ -183,13 +183,13 @@ projectRoutes.post("/project/services-project/activities", checkToken, workAcces
 // Rota para excluir uma atividade
 projectRoutes.delete("/project/services-project/activities/:id", checkToken, workAccess([{kind:'activity',field:'id'}], 'params'), deleteActivity);
 
-projectRoutes.post("/project/schedule", checkToken, access('Projects', [ref('company', 'body.company_id')]), projectController.getSellerSchedule.bind(projectController));
+projectRoutes.post("/project/schedule", checkToken, access(['Projects', 'Job Schedule'], [ref('company', 'body.company_id')]), projectController.getSellerSchedule.bind(projectController));
 
 projectRoutes.patch("/service-project/update/dates", checkToken, access('Projects', [ref('serviceProject', 'body.id')]), projectController.updateDatesServiceProject.bind(projectController));
 
 projectRoutes.patch("/service-project/update/status", checkToken, access('Projects', [ref('serviceProject', 'body.id')]), projectController.updateStatusServiceProject.bind(projectController));
 
-projectRoutes.post("/service-project/schedule", checkToken, access('Projects', [ref('company', 'body.company_id')]), projectController.getServiceProjectSchedule.bind(projectController));
+projectRoutes.post("/service-project/schedule", checkToken, access(['Projects', 'Job Dispatch'], [ref('company', 'body.company_id')]), projectController.getServiceProjectSchedule.bind(projectController));
 
 // Rota para buscar os ServiceProjects relacionados ao usuário
 projectRoutes.post("/service-project/scheduleById", checkToken, requireOwnSchedule, projectController.getServiceProjectScheduleByIdUser.bind(projectController));
@@ -200,7 +200,7 @@ const timeController = new TimeController()
 projectRoutes.get('/time-cards/all', checkToken, access('Time Cards', [ref('company', 'query.id')]), timeController.findMany.bind(timeController))
 projectRoutes.get('/time-cards/worker_id', checkToken, timeController.findManyByIdWorker.bind(timeController))
 projectRoutes.get('/time-cards/worker_id_web', checkToken, timeController.findManyByIdWorkerWeb.bind(timeController))
-projectRoutes.get('/time-activies', checkToken, access('Time Cards', [ref('company', 'query.id')]), timeController.findManyActivies.bind(timeController))
+projectRoutes.get('/time-activies', checkToken, access(['Time Cards', 'Activities'], [ref('company', 'query.id')]), timeController.findManyActivies.bind(timeController))
 
 projectRoutes.get("/project/generate-pdf/:id", checkToken, access('Projects', [ref('project', 'params.id')]), projectController.generateAndSendPdf.bind(projectController));
 

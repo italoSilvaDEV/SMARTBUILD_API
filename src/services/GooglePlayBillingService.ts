@@ -6,7 +6,7 @@ import { parseAndroidPlanMappings } from './AndroidBillingPolicy';
 import { GoogleBillingError, normalizeGooglePurchase, assertGoogleOwnership } from './GooglePlayPurchase';
 import { GooglePlayGateway, createGooglePlayGateway } from './GooglePlayGateway';
 import { ensureCompanyPlanSetup } from './MobilePlanSetup';
-import { assertNoForeignSubscription, SubscriptionPurchaseConflict } from './SubscriptionPurchaseGuard';
+import { assertNoActiveForeignContract, SubscriptionPurchaseConflict } from './SubscriptionPurchaseGuard';
 export class GooglePlayBillingService {
     constructor(private readonly db: PrismaClient = prisma, private readonly gateway: GooglePlayGateway = createGooglePlayGateway(), private readonly env: NodeJS.ProcessEnv = process.env) { }
     private enabled() {
@@ -97,14 +97,14 @@ export class GooglePlayBillingService {
                 let subscription = existing;
                 if (!purchase.pending) {
                     if (purchase.active) {
-                        try { await assertNoForeignSubscription(tx, companyId, 'google'); }
+                        try { await assertNoActiveForeignContract(tx, companyId, 'google'); }
                         catch (error) {
                             if (error instanceof SubscriptionPurchaseConflict)
                                 throw new GoogleBillingError(`GOOGLE_PROVIDER_CONFLICT_${error.provider.toUpperCase()}`, 409);
                             throw error;
                         }
                     }
-                    const other = await tx.subscription.findFirst({ where: { companyId, isActive: true, id: { notIn: [existing?.id, older?.id].filter((id): id is string => !!id) }, NOT: { plan: { validityType: 'FREE' }, endDate: { lte: new Date() } } } });
+                    const other = await tx.subscription.findFirst({ where: { companyId, isActive: true, id: { notIn: [existing?.id, older?.id].filter((id): id is string => !!id) }, NOT: { plan: { validityType: 'FREE' } } } });
                     if (purchase.active && other)
                         throw new GoogleBillingError('GOOGLE_OTHER_SUBSCRIPTION_ACTIVE');
                     const data = { billingProvider: 'google' as const, companyId, planId: plan.id, startDate: purchase.startDate, endDate: purchase.endDate, isActive: purchase.active,

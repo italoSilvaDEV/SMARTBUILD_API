@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, RequestHandler, Response } from 'express';
 import { prisma } from '../utils/prisma';
 import { canUseCompanyFeature } from '../services/CompanyFeatureAccess';
 
@@ -36,6 +36,18 @@ export async function requireUserManagementAccess(req: Request, res: Response, n
   } catch {
     return res.status(503).json({ error: 'Unable to verify user management access' });
   }
+}
+
+// "Meu perfil" posts the whole session user without company_id. Only contact fields are
+// applied, so role, status and pay in that body never reach the management update.
+export function routeOwnProfileUpdate(saveProfile: RequestHandler): RequestHandler {
+  return (req, res, next) => {
+    const actorId = (req as any).userId;
+    if (!actorId || req.body?.id !== actorId || req.body?.company_id !== undefined) return next();
+    const { id, name, email, phone } = req.body;
+    req.body = { id, name, email, phone };
+    return saveProfile(req, res, next);
+  };
 }
 
 export function requireOwnUserRecord(req: Request, res: Response, next: NextFunction) {
