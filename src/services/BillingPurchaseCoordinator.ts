@@ -126,7 +126,15 @@ export class BillingPurchaseCoordinator {
     if(current.checkoutId && current.checkoutUrl) return {id:current.checkoutId,url:current.checkoutUrl};
     // Never reuse a pruned Stripe idempotency key after its guaranteed window.
     if(current.createdAt.getTime()+23*3600000<Date.now()) throw new BillingAttemptError('CHECKOUT_REQUIRES_RECONCILIATION','stripe');
-    const session=await gateway.create(current.params,`smartbuild-billing-${current.id}`);
+    let session:any;
+    try { session=await gateway.create(current.params,`smartbuild-billing-${current.id}`); }
+    catch(error:any) {
+      // A definitive refusal created nothing at Stripe, so it must not block the company.
+      // Uncertain outcomes (network, 5xx, 409, 429, idempotency) keep the attempt open.
+      const refused=error?.statusCode>=400 && error?.statusCode<500 && ![409,429].includes(error.statusCode) && error?.type!=='StripeIdempotencyError';
+      if(refused) await this.db.billingPurchaseAttempt.updateMany({where:{companyId,id:current.id,state:'creating'},data:{state:'closed'}});
+      throw error;
+    }
     const saved=await this.db.billingPurchaseAttempt.updateMany({where:{companyId,id:current.id,state:'creating'},data:{checkoutId:session.id,checkoutUrl:session.url,state:'open',expiresAt:new Date(session.expires_at*1000)}});
 
     if(saved.count!==1) {
