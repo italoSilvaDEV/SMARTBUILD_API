@@ -7,6 +7,8 @@ import { GoogleBillingError, normalizeGooglePurchase, assertGoogleOwnership } fr
 import { GooglePlayGateway, createGooglePlayGateway } from './GooglePlayGateway';
 import { ensureCompanyPlanSetup } from './MobilePlanSetup';
 import { assertNoActiveForeignContract, SubscriptionPurchaseConflict } from './SubscriptionPurchaseGuard';
+// Parked, not deleted: the reconciliation job skips it, explicit syncs and new RTDNs still process it.
+export const UNRESOLVED_PARKED_UNTIL = new Date('9999-12-31T00:00:00.000Z');
 export class GooglePlayBillingService {
     constructor(private readonly db: PrismaClient = prisma, private readonly gateway: GooglePlayGateway = createGooglePlayGateway(), private readonly env: NodeJS.ProcessEnv = process.env) { }
     private enabled() {
@@ -136,7 +138,11 @@ export class GooglePlayBillingService {
         }
         catch (error) {
             const code = error instanceof GoogleBillingError ? error.code : 'GOOGLE_SYNC_FAILED';
-            await this.db.googlePlayPurchaseSync.updateMany({ where: { id: row.id, leaseId }, data: { leaseId: null, lockedUntil: null, lastErrorCode: code, nextAttemptAt: new Date(Date.now() + 60000) } });
+            // HML and production share one Play app and one RTDN topic, so each receives the other's
+            // tokens. Re-reading Google cannot resolve an unknown owner; only the app's verify/restore
+            // (which ignores nextAttemptAt) or a new notification for the token (which re-queues it) can.
+            const nextAttemptAt = code === 'GOOGLE_OWNER_UNRESOLVED' ? UNRESOLVED_PARKED_UNTIL : new Date(Date.now() + 60000);
+            await this.db.googlePlayPurchaseSync.updateMany({ where: { id: row.id, leaseId }, data: { leaseId: null, lockedUntil: null, lastErrorCode: code, nextAttemptAt } });
             // Never propagate SDK errors: they may contain authorization headers or purchase tokens.
             throw error instanceof GoogleBillingError ? error : new GoogleBillingError(code, 503);
         }

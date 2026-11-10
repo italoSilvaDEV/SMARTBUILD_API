@@ -1,4 +1,4 @@
-import { GooglePlayBillingService } from './GooglePlayBillingService';
+import { GooglePlayBillingService, UNRESOLVED_PARKED_UNTIL } from './GooglePlayBillingService';
 import { googleCompanyAccountId } from './GooglePlayPurchase';
 import { ensureCompanyPlanSetup } from './MobilePlanSetup';
 jest.mock('../utils/prisma', () => ({ prisma: {} }));
@@ -32,6 +32,35 @@ test('live Stripe contract still refuses the Google purchase', async () => { use
 test('sandbox is rejected outside dedicated companies', async () => { gateway.get.mockResolvedValue({ ...receipt(), testPurchase: {} }); await expect(sync()).rejects.toThrow('GOOGLE_TEST_COMPANY_REQUIRED'); expect(db.$transaction).not.toHaveBeenCalled(); });
 test('live purchases require explicit release config', async () => { env.GOOGLE_PLAY_ACCEPT_LIVE_PURCHASES = 'false'; await expect(sync()).rejects.toThrow('GOOGLE_LIVE_PURCHASES_DISABLED'); });
 test('native flag disabled does not query Google or DB', async () => { env.GOOGLE_PLAY_NATIVE_ENABLED = 'false'; await expect(sync()).rejects.toThrow('GOOGLE_NATIVE_DISABLED'); expect(db.googlePlayPurchaseSync.upsert).not.toHaveBeenCalled(); });
+// HML and production share one Play app and RTDN topic: each receives the other's tokens.
+describe('token whose company cannot be identified', () => {
+    test('is parked instead of retried every minute', async () => {
+        await expect(service.sync({ token: 'other-environment' })).rejects.toThrow('GOOGLE_OWNER_UNRESOLVED');
+        expect(ledger).toMatchObject({ lastErrorCode: 'GOOGLE_OWNER_UNRESOLVED', nextAttemptAt: UNRESOLVED_PARKED_UNTIL, leaseId: null, lockedUntil: null });
+        expect(db.subscription.create).not.toHaveBeenCalled();
+        expect(gateway.acknowledge).not.toHaveBeenCalled();
+    });
+    test('is still processed when the app verifies the purchase for its company', async () => {
+        await expect(service.sync({ token: 'secret-purchase' })).rejects.toThrow('GOOGLE_OWNER_UNRESOLVED');
+        expect((await sync()).active).toBe(true);
+        expect(ledger).toMatchObject({ companyId: 'company', lastErrorCode: null });
+        expect(ledger.nextAttemptAt.getTime()).toBeLessThan(UNRESOLVED_PARKED_UNTIL.getTime());
+    });
+    test('a new notification for the token puts it back in the queue', async () => {
+        const data = Buffer.from(JSON.stringify({ packageName: 'package', subscriptionNotification: { purchaseToken: 'other-environment' } })).toString('base64');
+        await service.receivePush('Bearer token', { message: { data } });
+        expect(db.googlePlayPurchaseSync.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { nextAttemptAt: expect.any(Date) } }));
+        const requeued = (db.googlePlayPurchaseSync.upsert.mock.calls[0][0] as any).update.nextAttemptAt as Date;
+        expect(requeued.getTime()).toBeLessThanOrEqual(Date.now());
+    });
+    test('other failures keep the one-minute retry', async () => {
+        gateway.get.mockRejectedValue(new Error('google unavailable'));
+        const before = Date.now();
+        await expect(sync()).rejects.toThrow('GOOGLE_SYNC_FAILED');
+        expect(ledger.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 60000);
+        expect(ledger.nextAttemptAt.getTime()).toBeLessThan(before + 120000);
+    });
+});
 test('ack failure persists safe retry after entitlement commit', async () => { gateway.acknowledge.mockRejectedValue(new Error('secret-purchase and credential')); await expect(sync()).rejects.toThrow('GOOGLE_SYNC_FAILED'); expect(events).toEqual(['persist', 'commit']); expect(ledger.lastErrorCode).toBe('GOOGLE_SYNC_FAILED'); expect(JSON.stringify(ledger)).not.toContain('credential'); });
 test('failed DB transaction never acknowledges', async () => { db.$transaction.mockRejectedValue(new Error('db')); await expect(sync()).rejects.toThrow('GOOGLE_SYNC_FAILED'); expect(gateway.acknowledge).not.toHaveBeenCalled(); });
 test('competing lease fails before Google lookup', async () => { db.googlePlayPurchaseSync.updateMany.mockResolvedValue({ count: 0 }); await expect(sync()).rejects.toThrow('GOOGLE_SYNC_BUSY'); expect(gateway.get).not.toHaveBeenCalled(); });
