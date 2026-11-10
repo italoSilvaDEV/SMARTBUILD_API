@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess, ref } from '../../middlewares/companyResourceAccess';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
@@ -22,6 +23,10 @@ export class CreatePdfProjectController {
                 return res.status(400).json({ error: 'Error uploading file' });
             }
             try {
+                let authorized = false;
+                await requireCompanyResourceAccess('Projects', [ref('project', 'body.project_id')])(req, res, () => { authorized = true; });
+                if (!authorized) { if (req.file) deleteFile(req.file.path); return; }
+
                 const { project_id } = req.body;
 
                 

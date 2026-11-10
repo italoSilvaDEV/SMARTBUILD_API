@@ -63,8 +63,8 @@ export async function userHasFullAccess(
   return user?.[flag] === true;
 }
 
-export async function grantOwnerFullAccessForCompany(companyId: string) {
-  const ownerCompanyLinks = await prisma.userCompany.findMany({
+export async function grantOwnerFullAccessForCompany(companyId: string, db: Pick<typeof prisma, 'userCompany' | 'user'> = prisma) {
+  const ownerCompanyLinks = await db.userCompany.findMany({
     where: {
       companyId,
       office: {
@@ -78,7 +78,7 @@ export async function grantOwnerFullAccessForCompany(companyId: string) {
     },
   });
 
-  const directOwnerUsers = await prisma.user.findMany({
+  const directOwnerUsers = await db.user.findMany({
     where: {
       company_id: companyId,
       office: {
@@ -103,7 +103,7 @@ export async function grantOwnerFullAccessForCompany(companyId: string) {
     return { count: 0 };
   }
 
-  return prisma.user.updateMany({
+  return db.user.updateMany({
     where: {
       id: {
         in: ownerUserIds,

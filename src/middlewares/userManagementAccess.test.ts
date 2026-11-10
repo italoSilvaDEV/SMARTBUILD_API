@@ -1,0 +1,41 @@
+import express from 'express';
+const request=require('supertest');
+jest.mock('../utils/prisma',()=>({prisma:{user:{findUnique:jest.fn()},office:{findUnique:jest.fn()},company:{findUnique:jest.fn()},subscription:{findMany:jest.fn()}}}));
+import { prisma } from '../utils/prisma';
+import { requireUserManagementAccess } from './userManagementAccess';
+const db=prisma as any;const handler=jest.fn((_req:any,res:any)=>res.sendStatus(204));const app=express();app.use(express.json(),(req,res,next)=>{if(req.headers.authorization)(req as any).userId='actor';next();});app.post('/user',requireUserManagementAccess,handler);app.put('/user',requireUserManagementAccess,handler);app.delete('/user/:id',requireUserManagementAccess,handler);app.delete('/user/userCompany/delete/:userId/:companyId',requireUserManagementAccess,handler);
+const role={name:'Owner',company_id:'company',legacyPlanPermissions:false,userPermissions:[]};
+const actor={isDisabled:false,company_id:'company',office:role,companies:[]};
+const plan={id:'plan',validityType:'MONTHLY',validityDuration:1,permissionGroup:{GroupPermissionsList:[{Permissions:{description:'User Management'}}]}};
+const row={id:'sub',companyId:'company',planId:'plan',billingProvider:'stripe',isActive:true,startDate:new Date('2026-01-01'),endDate:new Date('2027-01-01'),paymentFailed:false,stripeSubscriptionCanceled:false};
+let target:any;
+beforeEach(()=>{jest.resetAllMocks();handler.mockImplementation((_req:any,res:any)=>res.sendStatus(204));target={company_id:'company',companies:[]};db.user.findUnique.mockImplementation(async({where}:any)=>where.id==='actor'?actor:target);db.office.findUnique.mockResolvedValue({...role,name:'Worker'});db.company.findUnique.mockResolvedValue({id:'company',Plan:plan,allowedEmployees:2,extraEmployees:0});db.subscription.findMany.mockResolvedValue([row]);});
+const call=(patch:any={})=>request(app).post('/user').set('Authorization','session').send({company_id:'company',office_id:'worker',...patch});
+test('allows entitled owner',async()=>{expect((await call()).status).toBe(204);expect(handler).toHaveBeenCalled();});
+test('requires authentication',async()=>{expect((await request(app).post('/user').send({company_id:'company'})).status).toBe(401);});
+test('owner cannot bypass purchased plan',async()=>{db.company.findUnique.mockResolvedValue({id:'company',Plan:{...plan,permissionGroup:{GroupPermissionsList:[]}}});expect((await call()).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test.each(['stripe','apple','google'])('accepts confirmed active %s entitlement',async billingProvider=>{db.subscription.findMany.mockResolvedValue([{...row,billingProvider}]);expect((await call()).status).toBe(204);});
+// R4: baseline routes never denied on subscription state; role and plan below still decide.
+test.each(['missing','duplicate','mismatch','expired','revoked'])('%s entitlement adds no block for an authorized role',async condition=>{db.subscription.findMany.mockResolvedValue(condition==='missing'?[]:condition==='duplicate'?[row,{...row,id:'second'}]:[{...row,...(condition==='mismatch'?{planId:'other'}:condition==='expired'?{billingProvider:'google',endDate:new Date('2026-01-02')}:{billingProvider:'apple',appleBillingStatus:'refunded'})}]);expect((await call()).status).toBe(204);expect(handler).toHaveBeenCalled();});
+test('empty new role is not an implicit grant; legacy is explicit and still plan-bound',async()=>{db.user.findUnique.mockResolvedValue({...actor,office:{...role,name:'Custom'}});expect((await call()).status).toBe(403);db.user.findUnique.mockResolvedValue({...actor,office:{...role,name:'Custom',legacyPlanPermissions:true}});expect((await call()).status).toBe(204);db.company.findUnique.mockResolvedValue({id:'company',Plan:{...plan,permissionGroup:{GroupPermissionsList:[]}}});expect((await call()).status).toBe(403);});
+test('checks fresh state for an old session after permission removal',async()=>{db.user.findUnique.mockResolvedValue({...actor,office:{...role,name:'Custom',userPermissions:[{permission:{description:'User Management'}}]}});expect((await call()).status).toBe(204);db.user.findUnique.mockResolvedValue({...actor,office:{...role,name:'Custom'}});expect((await call()).status).toBe(403);});
+test('rejects another company office',async()=>{db.office.findUnique.mockResolvedValue({...role,company_id:'other'});expect((await call()).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('global user edit requires authority in every affected company',async()=>{target={company_id:'company',companies:[{companyId:'other'}]};expect((await request(app).put('/user').set('Authorization','session').send({id:'target',company_id:'company',office:{id:'worker'}})).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('company-scoped unlink does not require authority over unrelated companies',async()=>{target={company_id:'company',companies:[{companyId:'other'}]};expect((await request(app).delete('/user/userCompany/delete/target/company').set('Authorization','session')).status).toBe(204);});
+test('unrelated target cannot be edited by forging company',async()=>{target={company_id:'other',companies:[]};expect((await request(app).put('/user').set('Authorization','session').send({id:'target',company_id:'company'})).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('database failure denies access',async()=>{db.company.findUnique.mockRejectedValue(new Error('offline'));expect((await call()).status).toBe(503);expect(handler).not.toHaveBeenCalled();});
+
+describe('own role changes',()=>{
+const offices:any={worker:{name:'Worker',company_id:'company',legacyPlanPermissions:true},owner:{name:'Owner',company_id:'company',legacyPlanPermissions:false},admin:{name:'Administrator',company_id:'company',legacyPlanPermissions:false}};
+const legacyWorker={...actor,office_id:'worker',office:{...role,name:'Worker',legacyPlanPermissions:true},companies:[]};
+const put=(body:any)=>request(app).put('/user').set('Authorization','session').send({company_id:'company',...body});
+beforeEach(()=>{db.office.findUnique.mockImplementation(async({where}:any)=>offices[where.id]??null);db.user.findUnique.mockResolvedValue(legacyWorker);});
+test.each([['office.id',{id:'actor',office:{id:'owner'}}],['office_id',{id:'actor',office_id:'owner'}],['Administrator',{id:'actor',office:{id:'admin'}}]])('a legacy worker cannot promote themself through %s',async(_n,body)=>{const res=await put(body);expect(res.status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('a harmless office_id cannot hide a different office.id',async()=>{expect((await put({id:'actor',office_id:'worker',office:{id:'owner'}})).status).toBe(403);expect(handler).not.toHaveBeenCalled();});
+test('saving the same role keeps working',async()=>{expect((await put({id:'actor',office:{id:'worker'},name:'New'})).status).toBe(204);});
+test('the role of the selected company decides for multi-company users',async()=>{db.user.findUnique.mockResolvedValue({...legacyWorker,office_id:'owner',companies:[{companyId:'company',office_id:'worker'}]});expect((await put({id:'actor',office:{id:'owner'}})).status).toBe(403);});
+test('an Owner may still change their own role',async()=>{db.user.findUnique.mockResolvedValue({...actor,office_id:'owner',companies:[]});expect((await put({id:'actor',office:{id:'admin'}})).status).toBe(204);});
+test('a manager can still change another user role',async()=>{db.user.findUnique.mockImplementation(async({where}:any)=>where.id==='actor'?actor:{office_id:'worker',company_id:'company',companies:[]});expect((await put({id:'target',office:{id:'admin'}})).status).toBe(204);});
+});
+
+test('preserves an explicitly identified legacy shared office through valid company membership',async()=>{db.user.findUnique.mockResolvedValue({...actor,office:{...role,company_id:'legacy-other',legacyPlanPermissions:true}});expect((await call()).status).toBe(204);});

@@ -2432,6 +2432,13 @@ export class ProjectController {
       const userServiceProjects = await prisma.userServiceProject.findMany({
         where: {
           user_id: user_id,
+          removed_at: null,
+          OR: [
+            { service_project: { Project: { company_id: { in: (req as any).allowedScheduleCompanyIds ?? [] } } } },
+            { sub_service_project: { serviceProject: { Project: { company_id: { in: (req as any).allowedScheduleCompanyIds ?? [] } } } } },
+            { custom_service_schedule: { project: { company_id: { in: (req as any).allowedScheduleCompanyIds ?? [] } } } },
+            { sub_service_project: { custom_service_schedule: { project: { company_id: { in: (req as any).allowedScheduleCompanyIds ?? [] } } } } },
+          ],
         },
         include: {
           service_project: {
@@ -2634,9 +2641,11 @@ export class ProjectController {
       }
       const serviceProjects = await prisma.serviceProject.findMany({
         where: {
+          Project: { company_id: { in: (req as any).allowedScheduleCompanyIds ?? [] } },
           UserServiceProject: {
             some: {
               user_id: id,
+              removed_at: null,
             },
           },
         },

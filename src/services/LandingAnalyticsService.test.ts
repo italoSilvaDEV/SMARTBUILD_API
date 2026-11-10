@@ -6,6 +6,10 @@ test('discards unknown fields and rejects arbitrary labels and invalid timestamp
   expect(() => parseLandingEvent({...event,section:'private user text'})).toThrow();
   expect(() => parseLandingEvent({...event,occurredAt:'invalid'})).toThrow();
 });
+test('accepts anonymous visits without device details', () => {
+  const anonymous = parseLandingEvent({...event, device:'unknown', landingSlug:'smartbuild-web', newVisitor:false});
+  expect(anonymous).toMatchObject({device:'unknown', landingSlug:'smartbuild-web', newVisitor:false});
+});
 test('counts sessions, section reach and cumulative active time without double counting', () => {
   const rows = [event,{...event,action:'section_view',section:'hero',sectionIndex:0},
     {...event,action:'section_view',section:'plans',sectionIndex:1},

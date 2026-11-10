@@ -1,3 +1,4 @@
+import { requireDocumentUpload } from '../../middlewares/documentAccess';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
@@ -107,6 +108,10 @@ export class CreatePdfProjectEstimateInvoiceController {
             }
 
             try {
+                let authorized = false;
+                await requireDocumentUpload(req, res, () => { authorized = true; });
+                if (!authorized) { if (req.file) deleteFile(req.file.path); return; }
+
                 const {
                     estimate_id,
                     invoice_id,
@@ -193,6 +198,7 @@ export class CreatePdfProjectEstimateInvoiceController {
                 // Criar o registro no banco
                 const result = await prisma.pdfProject.create({
                     data: {
+                        uploadedById: (req as any).userId,
                         original_file_name: file.originalname,
                         type_pdf: type_pdf,
                         uri: fileName,

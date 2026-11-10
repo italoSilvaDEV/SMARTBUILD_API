@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess as access, ref } from '../middlewares/companyResourceAccess';
 import { Router } from "express";
 import { checkToken } from "../middlewares/checkToken";
 import multer from "multer";
@@ -42,6 +43,7 @@ const updateChangeOrderServiceController = new UpdateChangeOrderServiceControlle
 changeOrderRoutes.post(
     "/create",
     checkToken,
+    access('Estimates', [ref('estimate', 'body.estimateId'), ref('project', 'body.projectId'), ref('pdf', 'body.pdfId')]),
     createChangeOrderController.handle
 );
 
@@ -53,18 +55,21 @@ changeOrderRoutes.post(
 changeOrderRoutes.patch(
     "/:changeOrderId/manual-approval",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'params.changeOrderId')]),
     manualApprovalChangeOrderController.handle
 );
 
 changeOrderRoutes.patch(
     "/:changeOrderId/remove-manual-signature",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'params.changeOrderId')]),
     removeManualSignatureChangeOrderController.handle
 );
 
 changeOrderRoutes.get(
     "/by-project/:projectId",
     checkToken,
+    access(['Estimates', 'Projects'], [ref('project', 'params.projectId')]),
     getAllChangeOrderByProjectController.handle
 );
 
@@ -76,18 +81,21 @@ changeOrderRoutes.get(
 changeOrderRoutes.put(
     "/update",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'body.changeOrderId')]),
     updateChangeOrderController.handle
 );
 
 changeOrderRoutes.put(
     "/update-full",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'body.changeOrderId')]),
     updateFullChangeOrderController.handle
 );
 
 changeOrderRoutes.delete(
     "/:changeOrderId/company/:companyId",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'params.changeOrderId'), ref('company', 'params.companyId')]),
     deleteChangeOrderController.handle
 );
 
@@ -95,24 +103,28 @@ changeOrderRoutes.delete(
 changeOrderRoutes.post(
     "/service/create",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'body.changeOrderId')]),
     createChangeOrderServiceController.handle
 );
 
 changeOrderRoutes.get(
     "/service/:changeOrderId",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'params.changeOrderId')]),
     getChangeOrderServicesController.handle
 );
 
 changeOrderRoutes.put(
     "/service/update",
     checkToken,
+    access('Estimates', [ref('changeOrderService', 'body.changeOrderServiceId')]),
     updateChangeOrderServiceController.handle
 );
 
 changeOrderRoutes.delete(
     "/service/:changeOrderServiceId",
     checkToken,
+    access('Estimates', [ref('changeOrderService', 'params.changeOrderServiceId')]),
     deleteChangeOrderServiceController.handle
 );
 
@@ -125,6 +137,7 @@ changeOrderRoutes.put(
 changeOrderRoutes.post(
     "/:id/send",
     checkToken,
+    access('Estimates', [ref('changeOrder', 'params.id')]),
     uploadAttachments.array("attachments", 10),
     sendEmailChangeOrderController.handle
 );

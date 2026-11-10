@@ -1,7 +1,12 @@
+import { resolveApplePlanId } from './MobileStorePlanMapping';
+import { ensureCompanyPlanSetup } from './MobilePlanSetup';
+import { admitVerifiedBilling, billingCoordinationEnabled, lockBillingCompany, BillingAttemptError } from './BillingPurchaseCoordinator';
+import { Prisma } from '@prisma/client';
 import Jwt from "jsonwebtoken";
 import { prisma } from "../utils/prisma";
 
 export type AppleBillingStatus =
+  | "grace"
   | "paid"
   | "trial"
   | "canceled"
@@ -23,7 +28,7 @@ type AppleTransaction = {
   transactionId?: string;
 };
 
-type AppleRenewal = { autoRenewStatus?: number };
+type AppleRenewal = { autoRenewStatus?: number; gracePeriodExpiresDate?: number };
 
 type AppleStatusItem = {
   originalTransactionId: string;
@@ -60,9 +65,12 @@ export function classifyAppleBillingStatus(input: {
   offerDiscountType?: string;
   revocationDate?: number;
   expiresDate?: number;
+  gracePeriodExpiresDate?: number;
   now?: number;
 }): AppleBillingStatus {
   if (input.revocationDate || input.status === 5) return "refunded";
+  if (input.status === 4 && Number.isFinite(input.gracePeriodExpiresDate)
+    && input.gracePeriodExpiresDate! > (input.now ?? Date.now())) return "grace";
   if (input.status === 3 || input.status === 4) return "payment_failed";
   if (input.status === 2 || (input.expiresDate != null && input.expiresDate <= (input.now ?? Date.now()))) {
     return "expired";
@@ -107,6 +115,17 @@ export async function refreshAppleBillingStatus(subscriptionId: string) {
   const subscription = await prisma.subscription.findUnique({ where: { id: subscriptionId } });
   if (!subscription || subscription.billingProvider !== "apple") return null;
 
+  const result=billingCoordinationEnabled()
+    ? await prisma.$transaction(async tx=>{
+        await lockBillingCompany(tx,subscription.companyId);
+        return refreshVerifiedAppleStatus(subscription,tx);
+      },{isolationLevel:'ReadCommitted',timeout:60000})
+    : await refreshVerifiedAppleStatus(subscription,prisma);
+  if(result===null) throw new BillingAttemptError('BILLING_REQUIRES_REVIEW','apple');
+  return result;
+}
+
+async function refreshVerifiedAppleStatus(subscription: NonNullable<Awaited<ReturnType<typeof prisma.subscription.findUnique>>>, db:Prisma.TransactionClient) {
   const lookupId = subscription.storeOriginalTransactionId || subscription.storeTransactionId;
   if (!lookupId) throw new Error("Apple subscription has no transaction identifier.");
 
@@ -132,20 +151,21 @@ export async function refreshAppleBillingStatus(subscriptionId: string) {
     offerDiscountType: transaction.offerDiscountType,
     revocationDate: transaction.revocationDate,
     expiresDate: transaction.expiresDate,
+    gracePeriodExpiresDate: renewal.gracePeriodExpiresDate,
   });
-  const expiresAt = Number(transaction.expiresDate);
+  const expiresAt = Number(billingStatus === 'grace' ? renewal.gracePeriodExpiresDate : transaction.expiresDate);
   const chargedAt = Number(transaction.purchaseDate);
   const charged = typeof transaction.price === "number" && transaction.price > 0
     && transaction.offerDiscountType !== "FREE_TRIAL";
 
-  await prisma.subscription.update({
+  const update = async (db: Prisma.TransactionClient) => db.subscription.update({
     where: { id: subscription.id },
     data: {
       appleBillingStatus: billingStatus,
       appleLastChargedAt: charged && Number.isFinite(chargedAt) && chargedAt > 0 ? new Date(chargedAt) : null,
       autoRenewing: renewal.autoRenewStatus === 1 ? true : renewal.autoRenewStatus === 0 ? false : subscription.autoRenewing,
       endDate: Number.isFinite(expiresAt) && expiresAt > 0 ? new Date(expiresAt) : subscription.endDate,
-      isActive: (item.status === 1 || item.status === 4)
+      isActive: (item.status === 1 && !transaction.revocationDate || billingStatus === "grace")
         && (Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt > Date.now() : subscription.endDate > new Date()),
       paymentFailed: item.status === 3 || item.status === 4,
       storeEnvironment: current.environment,
@@ -153,6 +173,23 @@ export async function refreshAppleBillingStatus(subscriptionId: string) {
     },
   });
 
+
+
+  if (billingCoordinationEnabled()) {
+    const active=(item.status===1 && !transaction.revocationDate || billingStatus==='grace')
+      && (Number.isFinite(expiresAt) && expiresAt>0 ? expiresAt>Date.now() : subscription.endDate>new Date());
+    if(!await admitVerifiedBilling(db,subscription.companyId,'apple',lookupId,active,[subscription.id],['expired','refunded'].includes(billingStatus))) return null;
+    if(active) {
+      const products=JSON.parse(process.env.MOBILE_APP_PRODUCTS_JSON || '[]');
+      if(!Array.isArray(products)) throw new Error('Invalid Apple plan mappings.');
+      const planId=resolveApplePlanId({productId:transaction.productId,configuredProducts:products,
+        legacyProductId:process.env.MOBILE_APP_PRODUCT_ID,legacyPlanId:process.env.MOBILE_APP_PLAN_ID});
+      const plan=await db.plan.findUniqueOrThrow({where:{id:planId},include:{permissionGroup:{include:{GroupPermissionsList:{select:{permission_id:true}}}}}});
+      await db.subscription.update({where:{id:subscription.id},data:{planId,storeProductId:transaction.productId,storeTransactionId:transaction.transactionId}});
+      await ensureCompanyPlanSetup(subscription.companyId,plan,db);
+    }
+  }
+  await update(db);
   return billingStatus;
 }
 
@@ -166,6 +203,7 @@ export async function reconcileAppleBillingStatuses(limit = 50, afterId?: string
         { appleBillingStatus: null },
         { appleBillingStatus: "paid" },
         { appleBillingStatus: "payment_failed" },
+        { appleBillingStatus: "grace" },
       ],
       ...(afterId ? { id: { gt: afterId } } : {}),
     },

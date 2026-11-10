@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import Jwt from "jsonwebtoken";
@@ -16,9 +17,11 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import S3Storage from "../../utils/S3/s3Storage";
 import { stripeConfig } from "../../config/stripe";
 import { isMultiCompanyEnabled } from "../../helpers/featureToggle";
-import { assertEmployeeSeatAvailable, countActiveEmployees, EmployeeLimitError } from "../../helpers/employeeLimit";
+import { assertEmployeeSeatAvailable, countActiveEmployees, EmployeeLimitError, withEmployeeSeatTransaction } from "../../helpers/employeeLimit";
 import { OWNER_FULL_ACCESS_DATA, isOwnerOfficeName } from "../../utils/ownerFullAccess";
 import { resolveEffectivePermissions } from "../../utils/planPermissions";
+import { observeSubscriptionAccess } from "../../services/SubscriptionAccessComparison";
+import { resolveCompanySubscriptionStatus } from "../../services/SubscriptionAccessDecision";
 import { buildLegacySnapshot, buildPolicySnapshot, toEffectiveDate } from "../../utils/breakPolicies";
 
 const PASSWORD_RECOVERY_COOLDOWN_SECONDS = 60;
@@ -50,13 +53,14 @@ async function saveInitialBreakPolicyAssignment(params: {
   selection: Awaited<ReturnType<typeof resolveInitialBreakPolicy>>;
   defaultBreakMinutes?: unknown;
   updatedById?: string;
+  db?: Prisma.TransactionClient;
 }) {
   if (!params.selection) return;
   const effectiveFrom = toEffectiveDate();
   const snapshot = params.selection.mode === "legacy"
     ? buildLegacySnapshot(params.defaultBreakMinutes, effectiveFrom)
     : buildPolicySnapshot(params.selection.policy!, params.selection.mode, effectiveFrom);
-  await prisma.userBreakPolicyAssignment.upsert({
+  await (params.db ?? prisma).userBreakPolicyAssignment.upsert({
     where: { userId_companyId: { userId: params.userId, companyId: params.companyId } },
     create: {
       userId: params.userId,
@@ -92,18 +96,6 @@ export class UserController {
     // Verificar o limite de funcionários
     const { company_id } = req.body;
     const isMultiCompany = await isMultiCompanyEnabled();
-    if (company_id) {
-      try {
-
-        await assertEmployeeSeatAvailable(company_id, { isMultiCompany });
-      } catch (error) {
-        if (error instanceof EmployeeLimitError) {
-          return res.status(400).json({ error: error.message });
-        }
-        console.error(`[create] Error verifying employee limit:`, error);
-      }
-    }
-
     function validateNewUser(data: INewUser): string | null {
       if (!data.name) return "Name is required";
       if (!data.email) return "Email is required";
@@ -170,7 +162,7 @@ export class UserController {
           where: { userId: userExists.id }
         });
 
-        const hasOtherCompanies = existingUserCompanies.length > 0;
+        const hasOtherCompanies = existingUserCompanies.length > 0 || Boolean(userExists.company_id);
 
         let pass: string | null = null;
         let shouldUpdatePassword = false;
@@ -186,16 +178,17 @@ export class UserController {
         }
         // Se o usuário já TEM outras empresas, não resetar senha (manter a atual)
 
+        await withEmployeeSeatTransaction([company_id], { isMultiCompany, lockUserId: userExists.id }, async db => {
         // Atualizar senha apenas se necessário
         if (shouldUpdatePassword && pass) {
           const hashedPassword = bcrypt.hashSync(pass, 10);
-          await prisma.user.update({
+          await db.user.update({
             where: { id: userExists.id },
             data: { password: hashedPassword }
           });
         }
 
-        const uc = await prisma.userCompany.create({
+        const uc = await db.userCompany.create({
           data: { userId: userExists.id, companyId: company_id, office_id: data.office_id }
         });
 
@@ -203,16 +196,19 @@ export class UserController {
           userId: userExists.id,
           companyId: company_id,
           selection: initialBreakPolicy,
+          db,
           defaultBreakMinutes: userExists.defaultBreakMinutes,
           updatedById: (req as any).userId,
         });
 
         if (isOwnerOffice) {
-          await prisma.user.update({
+          await db.user.update({
             where: { id: userExists.id },
             data: OWNER_FULL_ACCESS_DATA,
           });
         }
+
+        });
 
         // Buscar informações da empresa para o email
         const company = await prisma.company.findUnique({
@@ -266,9 +262,10 @@ export class UserController {
         hashedPassword = bcrypt.hashSync(pass, 10);
       }
 
+      const user = await withEmployeeSeatTransaction([company_id], { isMultiCompany }, async db => {
       // Determinar se o usuário deve ser marcado como extra paid
       // Os primeiros allowedEmployees usuários são do plano, os seguintes são extras
-      const companyForExtraCheck = await prisma.company.findUnique({
+      const companyForExtraCheck = await db.company.findUnique({
         where: { id: company_id },
         select: { allowedEmployees: true, paidShortGapEnabled: true }
       });
@@ -279,6 +276,7 @@ export class UserController {
       const currentEmployeesCountForExtra = await countActiveEmployees(company_id, {
         isMultiCompany,
         onlyPlanSeats: true,
+        db,
       });
 
       // Se as vagas do plano já estão ocupadas, este usuário é extra
@@ -287,7 +285,7 @@ export class UserController {
       console.log(`[create] isExtraPaidUser determination: currentCount=${currentEmployeesCountForExtra}, allowed=${allowedEmployees}, isExtra=${isExtraPaidUser}`);
 
       // Criação do usuário
-      const user = await prisma.user.create({
+      const user = await db.user.create({
         data: {
           avatar: String(fileName),
           name: data.name,
@@ -318,7 +316,7 @@ export class UserController {
 
 
       if (isMultiCompany) {
-        const ucNew = await prisma.userCompany.create({
+        const ucNew = await db.userCompany.create({
           data: { companyId: data.company_id, userId: user.id, office_id: data.office_id },
         });
       }
@@ -327,8 +325,12 @@ export class UserController {
         userId: user.id,
         companyId: data.company_id,
         selection: initialBreakPolicy,
+        db,
         defaultBreakMinutes: (data as any).defaultBreakMinutes,
         updatedById: (req as any).userId,
+      });
+
+        return user;
       });
 
       const company = await prisma.company.findUnique({
@@ -357,6 +359,8 @@ export class UserController {
 
       return res.status(201).json({ message: "User created successfully", userId: user.id });
     } catch (error: any) {
+      if (error instanceof EmployeeLimitError) return res.status(400).json({ error: error.message });
+      if (error?.code === "P2034" || error?.code === "P2002") return res.status(409).json({ error: "Concurrent user change. Refresh before retrying." });
       console.error(`[create] Error:`, error);
       return res.status(500).json({ error: error.message || "Internal error" });
     }
@@ -833,33 +837,10 @@ export class UserController {
       //   }
       // }
 
-      // Check if email is different and already in use in the same company
+      // An email identifies one account. Editing a profile must never invite a different account.
       if (email !== user.email) {
-        const userWithEmail = await prisma.user.findUnique({
-          where: { email },
-        });
-
-        if (userWithEmail && user.company_id) {
-          const userCompany = await prisma.userCompany.findFirst({
-            where: {
-              userId: userWithEmail.id,
-              companyId: user.company_id // ou passe company_id via body, se necessário
-            }
-          });
-
-          if (userCompany) {
-            return response.status(400).json({
-              error: "Email has already been registered in the system for this company"
-            });
-          }
-          await prisma.userCompany.create({
-            data: {
-              userId: userWithEmail.id,
-              companyId: user.company_id,
-              office_id: office.id,
-            },
-          });
-        }
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) return response.status(400).json({ error: "Email already registered" });
       }
 
       // Buscar permissões do office para validar os campos editAll.
@@ -914,26 +895,6 @@ export class UserController {
           }
         }
 
-        // Atualizar office_id na tabela UserCompany
-        await prisma.userCompany.update({
-          where: {
-            userId_companyId: {
-              userId: user.id,
-              companyId: company_id
-            }
-          },
-          data: {
-            office_id: office.id,
-          }
-        });
-
-        // Atualizar office_id na tabela User
-        await prisma.user.update({
-          where: { id },
-          data: {
-            office_id: office.id,
-          },
-        });
       } else if (user.office_id) {
         // Se não mudou o office, buscar o office atual para validar
         const currentOffice = await prisma.office.findUnique({
@@ -970,6 +931,36 @@ export class UserController {
         }
       }
 
+      const persistUserUpdate = async (args: Prisma.UserUpdateArgs) => {
+        const persist = async (db: Prisma.TransactionClient) => {
+          if (office && company_id) {
+            await db.userCompany.update({ where: { userId_companyId: { userId: id, companyId: company_id } }, data: { office_id: office.id } });
+            args.data.office_id = office.id;
+          }
+          return db.user.update(args);
+        };
+        if (isDisabled !== false) return prisma.$transaction(persist);
+        const links = await prisma.userCompany.findMany({ where: { userId: id }, select: { companyId: true } });
+        const ids = [...new Set([...links.map(link => link.companyId), ...(user.company_id ? [user.company_id] : [])])];
+        return withEmployeeSeatTransaction(ids, { excludeUserId: id, isMultiCompany: await isMultiCompanyEnabled() }, async db => {
+          // Recheck the additional-seat classification under the same locks as activation.
+          const current = await db.user.findUniqueOrThrow({ where: { id }, select: { isDisabled: true, isExtraPaidUser: true } });
+          if (current.isDisabled && current.isExtraPaidUser) {
+            const currentLinks = await db.userCompany.findMany({ where: { userId: id }, select: { companyId: true } });
+            const currentUser = await db.user.findUniqueOrThrow({ where: { id }, select: { company_id: true } });
+            const lockedIds = [...new Set([...currentLinks.map(link => link.companyId), ...(currentUser.company_id ? [currentUser.company_id] : [])])];
+            for (const companyId of lockedIds) {
+              const company = await db.company.findUniqueOrThrow({ where: { id: companyId }, select: { extraEmployees: true } });
+              const extraCount = await db.user.count({ where: { id: { not: id }, isExtraPaidUser: true,
+                AND: [{ OR: [{ isDisabled: false }, { isDisabled: null }] },
+                  { OR: [{ company_id: companyId }, { companies: { some: { companyId } } }] }] } });
+              if (extraCount >= (company.extraEmployees ?? 0)) throw new EmployeeLimitError(company.extraEmployees ?? 0);
+            }
+          }
+          return persist(db);
+        });
+      };
+
       if (current_password && password) {
         const checkPassword = await bcrypt.compare(
           current_password,
@@ -984,7 +975,7 @@ export class UserController {
 
         const hashedPassword = bcrypt.hashSync(password, 10);
 
-        await prisma.user.update({
+        await persistUserUpdate({
           where: { id },
           data: {
             name,
@@ -1010,7 +1001,7 @@ export class UserController {
           },
         });
       } else {
-        await prisma.user.update({
+        await persistUserUpdate({
           where: { id },
           data: {
             name,
@@ -1038,6 +1029,8 @@ export class UserController {
 
       return response.json({ message: "User updated successfully" });
     } catch (error: any) {
+      if (error instanceof EmployeeLimitError) return response.status(400).json({ error: error.message });
+      if (error?.code === "P2034") return response.status(409).json({ error: "Concurrent user change. Refresh before retrying." });
       if (error instanceof Error) {
         return response.status(500).json({ error: error.message });
       }
@@ -1063,6 +1056,14 @@ export class UserController {
     try {
       const user = await prisma.user.findUnique({ where: { id } });
       if (!user) return response.status(404).json({ error: "User not found" });
+
+      const isBlank = (value: unknown) => value !== undefined && (typeof value !== "string" || !value.trim());
+      if (isBlank(name)) return response.status(400).json({ error: "Name is required" });
+      if (isBlank(email)) return response.status(400).json({ error: "Email is required" });
+      if (email !== undefined && email !== user.email) {
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) return response.status(400).json({ error: "Email already registered" });
+      }
 
       await prisma.user.update({
         where: { id },
@@ -1952,7 +1953,7 @@ export class UserController {
       }
 
       // Obter informações do plano
-      const planInfo = company?.Plan ? {
+      let planInfo = company?.Plan ? {
         id: company.Plan.id,
         name: company.Plan.name,
         validityType: company.Plan.validityType,
@@ -1962,49 +1963,30 @@ export class UserController {
         isCampaign: company.Plan.isCampaign
       } : null;
 
-      // Buscar a assinatura mais recente pelo startDate usando o company_id do parâmetro
-      const subscription = await prisma.subscription.findFirst({
+      // Detect conflicting active rows without selecting a provider by date.
+      const activeSubscriptions = await prisma.subscription.findMany({
         where: {
           companyId: company_id,
-          isActive: true
+          isActive: true,
+          NOT: { plan: { validityType: 'FREE' }, endDate: { lte: new Date() } },
         },
-        orderBy: { startDate: 'desc' }
+        orderBy: { startDate: 'desc' },
+        take: 10,
+        include: { plan: { select: { validityType: true } } },
       });
-
-      // Definir valores padrão
-      let isExpired = true;
-      let stripeSubscriptionCanceled = false;
-      let paymentFailed = false;
-
-
-      // Lógica de verificação de planos e assinaturas
-      if (!planInfo) {
-        // Sem plano definido, considerar expirado
-        isExpired = true;
-      }
-      else if (planInfo.validityType === 'FREE') {
-        // Para planos FREE, verificar data de expiração na assinatura local
-        if (subscription) {
-          isExpired = new Date(subscription.endDate) < new Date();
-        } else {
-          // Sem assinatura para plano FREE, considerar expirado
-          isExpired = true;
-        }
-      }
-      else {
-        // Para planos PAGOS (não-FREE), usar os valores da assinatura local
-        if (subscription) {
-          isExpired =
-            !subscription.isActive ||
-            ((subscription.billingProvider === "apple" || subscription.billingProvider === "google") &&
-              new Date(subscription.endDate) < new Date());
-          stripeSubscriptionCanceled = subscription.stripeSubscriptionCanceled;
-          paymentFailed = subscription.paymentFailed;
-        }
-      }
-
+      const status = resolveCompanySubscriptionStatus({
+        companyId: company_id, plan: planInfo ? { ...planInfo, permissions } : null,
+        allowedEmployees: company?.allowedEmployees ?? 0, extraEmployees: company?.extraEmployees ?? 0,
+        pendingSubscription: company?.mobileSubscriptionStatus === 'pending_subscription',
+        subscriptions: activeSubscriptions, now: new Date(),
+      });
+      const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, accessIssue, billingReview } = status;
+      if (billingReview) console.warn(`[billing-review] web-status company=${company_id} reason=${billingReview}`);
+      permissions = status.permissions;
+      if (accessIssue) planInfo = null;
       let office = null;
       let officePermissions: string[] = [];
+      let hasCompanyLink = user.company?.id === company_id;
 
       if (company_id) {
         const userCompany = await prisma.userCompany.findUnique({
@@ -2028,6 +2010,7 @@ export class UserController {
         })
 
         office = userCompany?.office;
+        hasCompanyLink = hasCompanyLink || Boolean(userCompany);
 
         // Buscar permissões do office do usuário
         if (office?.userPermissions) {
@@ -2040,14 +2023,28 @@ export class UserController {
         permissions,
         officePermissions,
         office?.name,
+        office?.legacyPlanPermissions === true,
       );
 
       // Retornar no mesmo formato do getSubscriptionStatus
+      if (company) {
+        await observeSubscriptionAccess({
+          consumer: 'local-status', company, planPermissions: permissions,
+          officePermissions, officeName: office?.name, legacyPlanPermissions: office?.legacyPlanPermissions === true,
+          hasCompanyAccess: hasCompanyLink && (req as any).userId === userId,
+          existing: {
+            subscriptionId: subscription?.id ?? null, planId: planInfo?.id ?? null,
+            isExpired, paymentFailed, stripeSubscriptionCanceled, permissions: finalPermissions,
+            seatLimit: (company.allowedEmployees || 0) + (company.extraEmployees || 0),
+          },
+        });
+      }
       return res.json({
         subscription,
         isExpired,
         stripeSubscriptionCanceled,
         paymentFailed,
+        ...(accessIssue ? { accessIssue } : {}),
         permissions: finalPermissions, // Permissões do Office do usuário
         plan: planInfo,
         office: office

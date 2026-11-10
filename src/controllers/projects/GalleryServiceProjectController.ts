@@ -1,3 +1,5 @@
+import { deleteFile } from '../../config/file';
+import { requireProjectWorkAccess } from '../../middlewares/projectWorkAccess';
 import { SubcontractorAccessError } from '../../utils/subcontractorIdentity';
 import { filterExternalFeedPhotos, authorizeExternalReportEmployee, employeeRequestId } from '../../services/employeeExternalReportBridge';
 import { externalServiceError } from '../../services/SubcontractorAccessService';
@@ -39,6 +41,9 @@ export class GalleryProjectController {
                     try { await authorizeExternalReportEmployee(description, employeeRequestId(request), true); }
                     catch (error) { fs.unlink(file.path,()=>{});const failure=externalServiceError(error);return response.status(failure.status).json({error:failure.code}); }
                 }
+                let authorized = false;
+                await requireProjectWorkAccess([{kind:'service',field:'serviceProjectId'}])(request, response, () => { authorized = true; });
+                if (!authorized) { if (request.file) deleteFile(request.file.path); return; }
                 const fileName = await uploadFileToS3(file, '');
 
                 const project = await prisma.serviceProject.findUnique({

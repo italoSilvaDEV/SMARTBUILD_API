@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess, ref } from '../../middlewares/companyResourceAccess';
 import { prisma } from "../../utils/prisma";
 import { Request, Response } from "express";
 import { deleteFile } from "../../config/file";
@@ -30,6 +31,10 @@ export class UpdatePdfChangeOrderController {
             }
 
             try {
+                let authorized = false;
+                await requireCompanyResourceAccess('Estimates', [ref('changeOrder', 'body.changeOrderId')])(req, res, () => { authorized = true; });
+                if (!authorized) { if (req.file) this.deleteFiles(req.file.filename); return; }
+
                 const {
                     changeOrderId
                 } = req.body;

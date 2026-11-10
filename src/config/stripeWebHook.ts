@@ -6,6 +6,8 @@ const stripe = stripeConfig.getClient();
 
 /** Eventos para conta principal */
 const MAIN_EVENTS: { event: string; name: string }[] = [
+  { event: "invoice.paid", name: "Paid invoice including zero-value trials" },
+  { event: "charge.refunded", name: "Android external billing refunds" },
   { event: "invoice.payment_succeeded", name: "Invoice payment (main account)" },
   { event: "checkout.session.completed", name: "Checkout completed" },
   { event: "customer.subscription.updated", name: "Subscription updated" },

@@ -1293,12 +1293,13 @@ export class EstimateController {
 
   async removeService(req: Request, res: Response) {
     try {
-      const { id } = req.params;
+      const { id, serviceProjectId } = req.params;
 
       // Find the record to delete
       const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          id
+          id: serviceProjectId,
+          estimateId: id
         }
       });
 
@@ -1349,13 +1350,14 @@ export class EstimateController {
 
   async updateService(req: Request, res: Response) {
     try {
-      const { id } = req.params;
+      const { id, serviceProjectId } = req.params;
       const { quantity, unitPrice, lineTotal, notes } = req.body;
 
       // Find the record to update
       const record = await prisma.estimateServiceProject.findFirst({
         where: {
-          id
+          id: serviceProjectId,
+          estimateId: id
         }
       });
 

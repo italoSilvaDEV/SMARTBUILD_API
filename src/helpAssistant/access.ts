@@ -29,7 +29,7 @@ export async function resolveHelpAccess(userId: string, requestedCompanyId: stri
       company_id: true,
       projectEditAll: true,
       invoiceEditAll: true,
-      office: { select: { name: true, userPermissions: { select: { permission: { select: { description: true } } } } } },
+      office: { select: { name: true, legacyPlanPermissions: true, userPermissions: { select: { permission: { select: { description: true } } } } } },
     },
   });
   if (!user) return null;
@@ -41,7 +41,7 @@ export async function resolveHelpAccess(userId: string, requestedCompanyId: stri
   const membership = await prisma.userCompany.findUnique({
     where: { userId_companyId: { userId, companyId } },
     select: {
-      office: { select: { name: true, userPermissions: { select: { permission: { select: { description: true } } } } } },
+      office: { select: { name: true, legacyPlanPermissions: true, userPermissions: { select: { permission: { select: { description: true } } } } } },
     },
   });
   if (membership) office = membership.office;
@@ -84,7 +84,7 @@ export async function resolveHelpAccess(userId: string, requestedCompanyId: stri
     officeName,
     companyId,
     companyName: company.name,
-    permissions: resolveEffectivePermissions(planPermissions, officePermissions, officeName),
+    permissions: resolveEffectivePermissions(planPermissions, officePermissions, officeName, office?.legacyPlanPermissions === true),
     fullProjectAccess,
     visibleProjectIds,
     invoiceAccessAll,

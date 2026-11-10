@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import { setupGooglePlayBillingJob } from './jobs/googlePlayBillingJob';
 import express from 'express';
 import { accountDeletionRoutes } from './routes/accountDeletionRoutes';
 import { setupAppAnalyticsRetentionJob } from './jobs/appAnalyticsRetentionJob';
@@ -6,7 +8,6 @@ import { createServer } from 'http';
 import { SocketService } from './services/SocketService';
 import { router } from './routes/routes';
 import path from 'path';
-import dotenv from 'dotenv';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
 // setupConnectWebhook is now deprecated - setupWebhook() handles all webhooks
@@ -18,11 +19,11 @@ import { setupMetaPurchaseRetryJob } from './jobs/metaPurchaseRetryJob';
 import { setupAppleBillingStatusJob } from './jobs/appleBillingStatusJob';
 import { StripeWebHooksController } from './controllers/stripe/WebHookController';
 import { StripeWebHookControllerConnect } from './controllers/stripe/WebHookControllerConnect';
+import { setupAndroidBillingReportingJob } from './jobs/androidBillingReportingJob';
 import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeService';
 import { assistantWhatsappWebhookRoutes } from './routes/assistantWhatsappRoutes';
 const cors = require('cors');
 
-dotenv.config();
 
 const app = express();
 const server = createServer(app);
@@ -84,8 +85,18 @@ app.use(express.static('public'));
   setupTrackingRetentionJob();
   setupMetaPurchaseRetryJob();
   setupAppleBillingStatusJob();
+  setupGooglePlayBillingJob();
+  setupAndroidBillingReportingJob();
   setupAppAnalyticsRetentionJob();
 })();
+
+// Node closes idle keep-alive sockets after 5s by default, but mobile clients
+// (Android OkHttp) reuse pooled connections for minutes. Reusing a socket the
+// server already closed makes the next request fail instantly (seen on receipt
+// scan uploads after picking a photo). Keep idle sockets longer than typical
+// client/proxy pools; headersTimeout must stay above keepAliveTimeout.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
 
 server.listen(4003, () =>
   console.log("server is running on http://localhost:4003")

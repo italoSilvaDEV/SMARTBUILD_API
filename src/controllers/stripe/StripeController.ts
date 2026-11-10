@@ -1,8 +1,11 @@
+import { authorizeBillingCheckout } from '../../services/BillingCheckoutAccess';
+import { billingCoordinationEnabled, billingPurchaseCoordinator, BillingAttemptError } from '../../services/BillingPurchaseCoordinator';
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import dayjs from "dayjs";
 import { stripeConfig } from "../../config/stripe";
 import { prisma } from "../../utils/prisma";
+import { assertNoForeignSubscription, SubscriptionPurchaseConflict } from '../../services/SubscriptionPurchaseGuard';
 import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { QuickBooksInvoiceController } from "../quickbooks/invoice/QuickBooksInvoiceController";
 import dotenv from "dotenv";
@@ -2468,6 +2471,11 @@ export class StripeController {
                 }
             }
 
+            if (billingCoordinationEnabled()) await authorizeBillingCheckout(req,companyId);
+
+            // Cross-provider admission only: preserve the existing Stripe checkout contract.
+            await assertNoForeignSubscription(prisma, companyId, 'stripe');
+
             // Preparar datas para a assinatura
             const startDate = new Date();
             let endDate = new Date();
@@ -2544,7 +2552,12 @@ export class StripeController {
             }
 
             // Criar a sessão de checkout
-            const session = await stripe.checkout.sessions.create(sessionConfig);
+            const session = billingCoordinationEnabled()
+                ? await billingPurchaseCoordinator.stripeCheckout(companyId, planId, sessionConfig, {
+                    create: (params, key) => stripe.checkout.sessions.create(params, { idempotencyKey: key }),
+                    retrieve: id => stripe.checkout.sessions.retrieve(id),
+                })
+                : await stripe.checkout.sessions.create(sessionConfig);
 
             console.log(' [StripeController] Sessão de checkout criada com sucesso:', session.id);
             if (referralId) {
@@ -2556,6 +2569,9 @@ export class StripeController {
                 sessionId: session.id
             });
         } catch (error) {
+            if (error instanceof SubscriptionPurchaseConflict || error instanceof BillingAttemptError) {
+                return res.status(error.status).json({ error: error.message, code: error.code, provider: error.provider });
+            }
             console.error("Erro ao criar sessão de checkout:", error);
             return res.status(500).json({ error: "Erro interno ao processar o checkout" });
         }

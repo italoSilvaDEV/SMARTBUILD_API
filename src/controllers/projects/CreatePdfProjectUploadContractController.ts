@@ -1,3 +1,4 @@
+import { requireCompanyResourceAccess, ref } from '../../middlewares/companyResourceAccess';
 import { Request, Response } from "express";
 import { prisma } from "../../utils/prisma";
 import { deleteFile } from "../../config/file";
@@ -37,6 +38,10 @@ export class CreatePdContractfProjectController {
             }
             
             try {
+                let authorized = false;
+                await requireCompanyResourceAccess('Contracts', [ref('project', 'body.projectId')])(req, res, () => { authorized = true; });
+                if (!authorized) { if (req.file) deleteFile(req.file.path); return; }
+
                 const { 
                     projectId, 
                     clientName,
