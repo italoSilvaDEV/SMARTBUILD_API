@@ -38,7 +38,7 @@ function pageUrl(value: unknown): string | null {
 export function parseLandingEvent(input: any): LandingEvent {
   const occurredAt = new Date(input?.occurredAt);
   if (!uuid.test(input?.id) || !uuid.test(input?.sessionId) || !actions.includes(input?.action) ||
-    !['production', 'development'].includes(input?.environment) || !['desktop', 'tablet', 'mobile'].includes(input?.device) ||
+    !['production', 'development'].includes(input?.environment) || !['desktop', 'tablet', 'mobile', 'unknown'].includes(input?.device) ||
     !Number.isFinite(occurredAt.getTime()) || Math.abs(Date.now() - occurredAt.getTime()) > 86400000) throw Error('Invalid event');
   const number = (v: unknown, max: number) => {
     if (v == null) return null;

@@ -143,9 +143,31 @@ export const syncEstimateDiscountedServices = async (smartbuild: any, estimateId
           data: siblingData,
         });
       } else {
-        await smartbuild.serviceProject.create({
-          data: siblingData,
+        // Legacy project services can predate estimateServiceId. Reuse one only
+        // when its stored work is an exact, unambiguous match.
+        const legacyMatches = await smartbuild.serviceProject.findMany({
+          where: {
+            projectId: estimate.projectId,
+            estimateServiceId: null,
+            name: siblingData.name,
+            description: siblingData.description,
+            price: siblingData.price,
+            hours: siblingData.hours,
+          },
+          select: { id: true },
+          take: 2,
         });
+
+        if (legacyMatches.length === 1) {
+          await smartbuild.serviceProject.update({
+            where: { id: legacyMatches[0].id },
+            data: { estimateServiceId: originalService.id },
+          });
+        } else {
+          await smartbuild.serviceProject.create({
+            data: siblingData,
+          });
+        }
       }
     }
   }

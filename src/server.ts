@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { setupGooglePlayBillingJob } from './jobs/googlePlayBillingJob';
 import express from 'express';
 import { accountDeletionRoutes } from './routes/accountDeletionRoutes';
@@ -7,7 +8,6 @@ import { createServer } from 'http';
 import { SocketService } from './services/SocketService';
 import { router } from './routes/routes';
 import path from 'path';
-import dotenv from 'dotenv';
 import { setupAttendanceJobs } from './jobs/attendanceJobs';
 import { auditRoutes } from './routes/auditRoutes';
 // setupConnectWebhook is now deprecated - setupWebhook() handles all webhooks
@@ -24,7 +24,6 @@ import { StripeExtraEmployeeService } from './services/StripeExtraEmployeeServic
 import { assistantWhatsappWebhookRoutes } from './routes/assistantWhatsappRoutes';
 const cors = require('cors');
 
-dotenv.config();
 
 const app = express();
 const server = createServer(app);
