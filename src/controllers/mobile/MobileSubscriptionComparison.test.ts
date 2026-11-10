@@ -112,21 +112,27 @@ describe('mobile login keeps existing responses during subscription comparison',
     (prisma.subscription.findMany as jest.Mock).mockRejectedValue(new Error('database unavailable'));
     await expect(buildAuthResponse('user', 'company')).rejects.toThrow('database unavailable');
   });
-  it.each(['stripe', 'apple', 'google'])('plan conflict rejects %s login even in the expired-recovery flow', async billingProvider => {
+  // Production 101d8b4 logs these companies in with the newest row and the company plan.
+  // Decision 10/11/2026: keep that result and only report the conflict; pending signups stay blocked.
+  it.each(['stripe', 'apple', 'google'])('plan conflict keeps the production %s login and only reports it', async billingProvider => {
     const record = { ...subscription, billingProvider, planId: 'another-plan' };
     (prisma.subscription.findFirst as jest.Mock).mockResolvedValue(record);
     (prisma.subscription.findMany as jest.Mock).mockResolvedValue([record]);
     for (const flag of ['false', 'true']) {
       process.env.SUBSCRIPTION_ACCESS_COMPARE = flag;
       for (const allowExpired of [false, true]) {
-        await expect(buildAuthResponse('user', 'company', allowExpired)).rejects.toThrow(
-          "Your company's plan does not match its subscription. Please contact support before purchasing another subscription.",
-        );
+        expect(await buildAuthResponse('user', 'company', allowExpired)).toMatchObject({ isExpired: false, subscription: record,
+          user: { plan: { id: 'annual-plan' }, permissions: ['invoices'] } });
       }
     }
+    expect(console.warn).toHaveBeenCalledWith('[billing-review] mobile-status company=company reason=company_subscription_plan_mismatch');
+    (prisma.company.findUnique as jest.Mock).mockResolvedValue({ ...company, mobileSubscriptionStatus: 'pending_subscription' });
+    await expect(buildAuthResponse('user', 'company')).rejects.toThrow(
+      "Your company's plan does not match its subscription. Please contact support before purchasing another subscription.",
+    );
   });
   it.each([['stripe', 'google'], ['apple', 'google'], ['stripe', 'apple'], ['google', 'google']])(
-    'multiple active %s/%s subscriptions reject login and recovery', async (first, second) => {
+    'multiple active %s/%s subscriptions keep the production login; pending signup stays blocked', async (first, second) => {
       const records = [{ ...subscription, billingProvider: first }, { ...subscription, id: 'second', billingProvider: second }];
       (prisma.subscription.findMany as jest.Mock).mockResolvedValue(records);
       for (const pending of [false, true]) {
@@ -134,12 +140,18 @@ describe('mobile login keeps existing responses during subscription comparison',
         for (const flag of ['false', 'true']) {
           process.env.SUBSCRIPTION_ACCESS_COMPARE = flag;
           for (const allowExpired of [false, true]) {
-            await expect(buildAuthResponse('user', 'company', allowExpired)).rejects.toThrow(
-              'Your company has multiple active subscriptions. Please contact support before purchasing another subscription.',
-            );
+            if (pending) {
+              await expect(buildAuthResponse('user', 'company', allowExpired)).rejects.toThrow(
+                'Your company has multiple active subscriptions. Please contact support before purchasing another subscription.',
+              );
+            } else {
+              expect(await buildAuthResponse('user', 'company', allowExpired)).toMatchObject({ isExpired: false,
+                subscription: { id: 'subscription' }, user: { plan: { id: 'annual-plan' }, permissions: ['invoices'] } });
+            }
           }
         }
       }
+      expect(console.warn).toHaveBeenCalledWith('[billing-review] mobile-status company=company reason=multiple_subscriptions');
     },
   );
 });

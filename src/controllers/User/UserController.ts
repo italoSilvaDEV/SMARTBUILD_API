@@ -1980,7 +1980,8 @@ export class UserController {
         pendingSubscription: company?.mobileSubscriptionStatus === 'pending_subscription',
         subscriptions: activeSubscriptions, now: new Date(),
       });
-      const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, accessIssue } = status;
+      const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, accessIssue, billingReview } = status;
+      if (billingReview) console.warn(`[billing-review] web-status company=${company_id} reason=${billingReview}`);
       permissions = status.permissions;
       if (accessIssue) planInfo = null;
       let office = null;

@@ -176,12 +176,20 @@ export function resolveCompanySubscriptionStatus<T extends SubscriptionSnapshot>
 }) {
   const active = withoutSupersededFree(input.subscriptions.filter(row => row.companyId === input.companyId && row.isActive
     && !(row.plan?.validityType === 'FREE' && row.endDate.getTime() <= input.now.getTime())), input.plan?.id);
-  const subscription = active.length === 1 ? active[0] : null;
-  const access = evaluateSubscriptionAccess({ ...input, subscriptions: active,
-    hasCompanyAccess: true, officePermissions: [], officeName: 'Owner' });
-  const conflict = active.length > 1 ? 'multiple_subscriptions'
-    : hasSubscriptionPlanConflict(input.companyId, input.plan?.id, subscription)
+  const detected = active.length > 1 ? 'multiple_subscriptions'
+    : hasSubscriptionPlanConflict(input.companyId, input.plan?.id, active[0])
       ? 'company_subscription_plan_mismatch' : null;
+  // Production (101d8b4) reads the newest active row and never compares it with Company.planId,
+  // so existing companies in either state keep working and the conflict is only reported.
+  // Pending signups and companies without a plan were already blocked there and stay blocked.
+  const tolerated = !!detected && !!input.plan && !input.pendingSubscription;
+  const byStart = [...active].sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+  const newest = byStart.find(row => row.startDate.getTime() <= input.now.getTime()) ?? byStart[0] ?? null;
+  const subscription = tolerated ? newest : active.length === 1 ? active[0] : null;
+  const access = evaluateSubscriptionAccess({ ...input,
+    subscriptions: tolerated && newest ? [{ ...newest, planId: input.plan!.id }] : active,
+    hasCompanyAccess: true, officePermissions: [], officeName: 'Owner' });
+  const conflict = tolerated ? null : detected;
   const paid = input.plan && input.plan.validityType !== 'FREE';
   const stripeFinancialReview = paid && subscription?.billingProvider === 'stripe'
     && !subscription.confirmedState && access.reason === 'provider_or_legacy_state_required'
@@ -191,7 +199,7 @@ export function resolveCompanySubscriptionStatus<T extends SubscriptionSnapshot>
   const isExpired = !!conflict || (access.decision !== 'allow' && !(stripeFinancialReview && !input.pendingSubscription));
   const accessIssue = conflict || (access.decision === 'review' && !stripeFinancialReview ? access.reason : null);
   return {
-    subscription, access, accessIssue, isExpired,
+    subscription, access, accessIssue, isExpired, billingReview: tolerated ? detected : null,
     paymentFailed: paid && subscription
       ? (hasConfirmedStoreGrace(subscription) && access.decision === 'allow'
         ? false : subscription.paymentFailed)

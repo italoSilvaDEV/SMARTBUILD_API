@@ -644,12 +644,13 @@ async function getCompanyStatus(companyId: string) {
     : null;
 
   const planPermissions = company.Plan?.permissionGroup?.GroupPermissionsList?.map(item => item.Permissions.description) || [];
-  const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions, accessIssue } = resolveCompanySubscriptionStatus({
+  const { subscription, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions, accessIssue, billingReview } = resolveCompanySubscriptionStatus({
     companyId, plan: planInfo ? { ...planInfo, permissions: planPermissions } : null,
     allowedEmployees: company.allowedEmployees ?? 0, extraEmployees: company.extraEmployees ?? 0,
     pendingSubscription: company.mobileSubscriptionStatus === 'pending_subscription',
     subscriptions: activeSubscriptions, now: new Date(),
   });
+  if (billingReview) console.warn(`[billing-review] mobile-status company=${companyId} reason=${billingReview}`);
   if (accessIssue) planInfo = null;
 
   return { company, subscription, planInfo, isExpired, paymentFailed, stripeSubscriptionCanceled, permissions,

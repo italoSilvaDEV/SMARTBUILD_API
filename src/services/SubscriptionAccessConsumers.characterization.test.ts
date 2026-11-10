@@ -149,31 +149,41 @@ describe('TASK-219 consumer regressions and remaining characterized discrepancie
     expect(r.web.isExpired).toBe(true);
     expect(r.candidate.decision).not.toBe('allow');
   });
+  // Production 101d8b4 reads the newest active row and never compares it with Company.planId.
+  // Decision 10/11/2026: existing companies keep that result; the conflict is only reported.
+  // Pending signups were always blocked on mobile and stay blocked.
   it.each([['stripe', 'google'], ['apple', 'google'], ['stripe', 'apple'], ['google', 'google']])(
-    'multiple active %s/%s subscriptions do not select a plan or grant permissions', async (first, second) => {
+    'multiple active %s/%s subscriptions keep the newest row like production', async (first, second) => {
       for (const role of ['Worker', 'Owner', 'Administrator']) {
-        for (const pending of [false, true]) {
-          const records = [row({ billingProvider: first }), row({ id: 'second', billingProvider: second, startDate: new Date('2026-10-01') })];
-          const before = JSON.stringify(records);
-          for (const rows of [records, [...records].reverse()]) {
-            const r = await run({ rows, role, pending });
-            expect(r.web).toMatchObject({ isExpired: true, plan: null, subscription: null, permissions: [], accessIssue: 'multiple_subscriptions' });
-            expect(r.mobile).toMatchObject({ isExpired: true, planInfo: null, subscription: null, permissions: [], accessIssue: 'multiple_subscriptions' });
-            expect(r.candidate.reason).toBe('multiple_subscriptions');
-          }
-          expect(JSON.stringify(records)).toBe(before);
+        const records = [row({ billingProvider: first }), row({ id: 'second', billingProvider: second, startDate: new Date('2026-10-01') })];
+        const before = JSON.stringify(records);
+        for (const rows of [records, [...records].reverse()]) {
+          const r = await run({ rows, role });
+          expect(r.web).toMatchObject({ isExpired: false, plan: { id: 'plan' }, subscription: { id: 'second' } });
+          expect(r.mobile).toMatchObject({ isExpired: false, planInfo: { id: 'plan' }, subscription: { id: 'second' }, permissions: ['invoices'] });
+          expect(r.web).not.toHaveProperty('accessIssue'); expect(r.mobile).not.toHaveProperty('accessIssue');
+          expect(r.candidate.reason).toBe('multiple_subscriptions');
+          const blocked = await run({ rows, role, pending: true });
+          expect(blocked.web).toMatchObject({ isExpired: true, plan: null, subscription: null, permissions: [], accessIssue: 'multiple_subscriptions' });
+          expect(blocked.mobile).toMatchObject({ isExpired: true, planInfo: null, subscription: null, permissions: [], accessIssue: 'multiple_subscriptions' });
         }
+        expect(JSON.stringify(records)).toBe(before);
       }
     },
   );
+  it('the newest active row still decides: an expired store row is not hidden by an older valid one', async () => {
+    const r = await run({ rows: [row(), row({ id: 'second', billingProvider: 'apple', startDate: new Date('2026-10-01'), endDate: new Date('2026-10-31') })] });
+    expect(r.web).toMatchObject({ isExpired: true, subscription: { id: 'second' } });
+    expect(r.mobile).toMatchObject({ isExpired: true, subscription: { id: 'second' } });
+  });
   it.each([
     { endDate: new Date('2026-10-01') },
     { planId: 'another-plan' },
     { startDate: new Date('2026-12-01') },
-  ])('does not dismiss a second active record based on local dates or plan: %j', async patch => {
+  ])('a second active record is reported, not blocking, whatever its dates or plan: %j', async patch => {
     const r = await run({ rows: [row(), row({ id: 'second', ...patch })] });
-    expect(r.web.accessIssue).toBe('multiple_subscriptions');
-    expect(r.mobile.accessIssue).toBe('multiple_subscriptions');
+    expect(r.web.isExpired).toBe(false); expect(r.mobile.isExpired).toBe(false);
+    expect(r.web).not.toHaveProperty('accessIssue'); expect(r.mobile).not.toHaveProperty('accessIssue');
     expect(r.candidate.reason).toBe('multiple_subscriptions');
   });
   it('another company subscription does not create a conflict', async () => {
@@ -181,20 +191,24 @@ describe('TASK-219 consumer regressions and remaining characterized discrepancie
     expect(r.web.isExpired).toBe(false); expect(r.mobile.isExpired).toBe(false);
     expect(r.web).not.toHaveProperty('accessIssue'); expect(r.mobile).not.toHaveProperty('accessIssue');
   });
-  it('three active subscriptions remain a conflict with the bounded query', async () => {
+  it('three active subscriptions are still detected by the bounded query and reported', async () => {
     const r = await run({ rows: [row(), row({ id: 'second' }), row({ id: 'third' })] });
-    expect(r.web.accessIssue).toBe('multiple_subscriptions');
-    expect(r.mobile.accessIssue).toBe('multiple_subscriptions');
+    expect(r.web.isExpired).toBe(false); expect(r.mobile.isExpired).toBe(false);
+    expect(resolveCompanySubscriptionStatus({ companyId: 'company', plan: { id: 'plan', validityType: 'MONTHLY', validityDuration: 1, permissions: [] },
+      allowedEmployees: 1, extraEmployees: 0, pendingSubscription: false, subscriptions: [row(), row({ id: 'second' }), row({ id: 'third' })], now }).billingReview)
+      .toBe('multiple_subscriptions');
   });
-  it.each(['stripe', 'apple', 'google'])('plan mismatch cannot grant company permissions for %s', async billingProvider => {
+  it.each(['stripe', 'apple', 'google'])('plan mismatch keeps the company plan like production for %s', async billingProvider => {
     for (const role of ['Worker', 'Owner', 'Administrator']) {
-      for (const pending of [false, true]) {
-        const record = row({ billingProvider, planId: 'different-plan' });
-        const r = await run({ role, pending, rows: [record] });
-        expect(r.web).toMatchObject({ isExpired: true, plan: null, permissions: [], accessIssue: 'company_subscription_plan_mismatch', subscription: record });
-        expect(r.mobile).toMatchObject({ isExpired: true, planInfo: null, permissions: [], accessIssue: 'company_subscription_plan_mismatch', subscription: record });
-        expect(r.candidate.reason).toBe('company_subscription_plan_mismatch');
-      }
+      const record = row({ billingProvider, planId: 'different-plan' });
+      const r = await run({ role, rows: [record] });
+      expect(r.web).toMatchObject({ isExpired: false, plan: { id: 'plan' }, subscription: record });
+      expect(r.mobile).toMatchObject({ isExpired: false, planInfo: { id: 'plan' }, permissions: ['invoices'], subscription: record });
+      expect(r.web).not.toHaveProperty('accessIssue'); expect(r.mobile).not.toHaveProperty('accessIssue');
+      expect(r.candidate.reason).toBe('company_subscription_plan_mismatch');
+      const blocked = await run({ role, pending: true, rows: [record] });
+      expect(blocked.web).toMatchObject({ isExpired: true, plan: null, permissions: [], accessIssue: 'company_subscription_plan_mismatch', subscription: record });
+      expect(blocked.mobile).toMatchObject({ isExpired: true, planInfo: null, permissions: [], accessIssue: 'company_subscription_plan_mismatch', subscription: record });
     }
   });
   it('missing company plan with an active subscription is a conflict, not permission to select another plan', async () => {
@@ -212,7 +226,7 @@ describe('TASK-219 consumer regressions and remaining characterized discrepancie
     const before = JSON.stringify(record);
     const r = await run({ rows: [record] });
     for (const result of [r.web, r.mobile]) {
-      expect(result).toMatchObject({ paymentFailed: true, stripeSubscriptionCanceled: true, subscription: record, permissions: [] });
+      expect(result).toMatchObject({ isExpired: false, paymentFailed: true, stripeSubscriptionCanceled: true, subscription: record });
     }
     expect(JSON.stringify(record)).toBe(before);
   });
@@ -299,15 +313,20 @@ describe('TASK-219 consumer regressions and remaining characterized discrepancie
     expect(JSON.stringify(rows)).toBe(before);
   });
   it('a newer FREE grant cannot hide a second paid contract from the bounded query', async () => {
-    const result = await run({ rows: [trial(), paid(), paid({ id: 'paid-2', billingProvider: 'apple', startDate: new Date('2026-09-01') })] });
-    expect(result.web.accessIssue).toBe('multiple_subscriptions');
-    expect(result.mobile.accessIssue).toBe('multiple_subscriptions');
+    const rows = [trial(), paid(), paid({ id: 'paid-2', billingProvider: 'apple', startDate: new Date('2026-09-01') })];
+    const result = await run({ rows });
+    expect(result.web).toMatchObject({ isExpired: false, subscription: { id: 'paid' } });
+    expect(result.mobile).toMatchObject({ isExpired: false, subscription: { id: 'paid' } });
+    expect(result.web).not.toHaveProperty('accessIssue');
+    expect(resolveCompanySubscriptionStatus({ companyId: 'company', plan: { id: 'plan', validityType: 'MONTHLY', validityDuration: 1, permissions: [] },
+      allowedEmployees: 1, extraEmployees: 0, pendingSubscription: false, subscriptions: rows, now }).billingReview).toBe('multiple_subscriptions');
   });
-  it('a FREE grant remains a conflict with paid rows not applied to the company', async () => {
+  it('a FREE grant with paid rows not applied to the company is reported and resolved like production', async () => {
     for (const rows of [[trial(), paid({ planId: 'other' })], [trial(), row({ id: 'unknown-type' })]]) {
       const result = await run({ rows });
-      expect(result.web.accessIssue).toBe('multiple_subscriptions');
-      expect(result.mobile.accessIssue).toBe('multiple_subscriptions');
+      expect(result.web).toMatchObject({ isExpired: false, subscription: { id: 'trial' } });
+      expect(result.mobile).toMatchObject({ isExpired: false, subscription: { id: 'trial' } });
+      expect(result.web).not.toHaveProperty('accessIssue'); expect(result.mobile).not.toHaveProperty('accessIssue');
     }
   });
   it('the FREE grant cannot override a financial problem on the paid contract', async () => {
