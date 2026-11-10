@@ -342,7 +342,7 @@ Commit e migrations implantados; serviços ativos; isolamento de rede; flags; ca
 | # | Problema | Condição | Base |
 |---|---|---|---|
 | **B6** | Duas linhas ou plano divergente: bloqueio total, sem tela explicativa, empurrando para nova compra (risco de cobrança dupla) | Sem flag | **[V]/[R]** |
-| **B7** | Worker legado com permissão herdada pode trocar o próprio cargo por Owner via `PUT /user` e comprar vagas reais. Já existia; o guarda não fecha | 331 usuários **[H]** | **[V]** |
+| **B7** | Worker legado com permissão herdada pode trocar o próprio cargo por Owner via `PUT /user` e comprar vagas reais. Já existia; o guarda não fecha. **Corrigido em `e667b54`, na HML em 09/11/2026:** o guarda valida `office_id` e `office.id`, e só Owner troca o próprio cargo. Testes automatizados passam. Na HML, em 10/11, o `worker@hml.test` (Worker legado com User Management) tentou virar Owner por `office.id`, por `office_id`, pelos dois juntos, e também virar Administrator: as quatro tentativas receberam 403 e o cargo não mudou. A edição de usuários pelo Owner na web segue normal. Promover **outro** usuário a Owner segue permitido (regra a decidir) | 331 usuários **[H]** | **[V]** |
 | **B8** | Primeiro `payment_failed` nega a API enquanto o Stripe ainda retenta | Sem flag; decisão de negócio | **[R]** |
 | **S1** | Google existente para de sincronizar sem a flag (503); produto legado não mapeia | **Só se houver Google em produção** | **[R]** |
 | **S2** | Tela liberada e API negada: Dispatch, Schedule e modais de Invoice exigem `Projects`; Starter não tem essa permissão | Sem flag | **[R]/[H]** |
@@ -401,7 +401,7 @@ Eventos Stripe extras se `setupStripeWebhooks` rodar de novo; arquivo temporári
 - Toda chamada de `PUT /user` com `company_id` (telas de gestão) segue pelo guarda sem mudança.
 - `updateUserProfile` passou a recusar nome ou e-mail vazios e e-mail de outra conta, com 400. Campos ausentes continuam sem alteração, o que preserva envios parciais do Crew.
 - Salvar o próprio perfil deixa de depender de plano, cargo ou assinatura, como antes de `6738aec`.
-- Efeito colateral positivo: fica fechada a troca do próprio cargo sem `company_id`. **B7 continua aberto** pelo caminho com `company_id`.
+- Efeito colateral positivo: fica fechada a troca do próprio cargo sem `company_id`. O caminho com `company_id` foi fechado depois, em `e667b54` (ver B7).
 - Fora desta correção: S3 (gestor multiempresa editando outra pessoa).
 - Reversão: desfazer essas alterações. Sem dado nem migration envolvidos.
 
@@ -487,9 +487,39 @@ Comparação das duas versões em clones descartáveis, com rede externa bloquea
 
 Limites: mesmos da seção anterior. Sem app real, Stripe, Apple ou Google. O commit em produção real é presumido pelo branch, não verificado.
 
+### Implantação na HML (09/11, 09:13 UTC)
+
+`b6bea64` enviado a `origin/new-hml` e implantado **somente na HML**, por fast-forward a partir de `6738aec`. Sem migration, sem mudança de dependência e sem `npm ci`. `PRODUÇÃO` continua em `101d8b4`.
+
+Backup: `/opt/smartbuild-hml-releases/pre-b6bea64-20261109T091307Z` (`dist.tar.gz` e `previous-sha`). Reversão: restaurar o `dist`, voltar o código a `6738aec` e reiniciar `smartbuild-api`.
+
+Conferido após o reinício: serviço ativo, commit correto, isolamento de rede e overrides 90/95 preservados, flags inalteradas, proxy Google ativo, catálogo 200 (local e HTTPS), rota protegida sem token 400 e nenhum erro no journal no primeiro minuto. Isso prova só a saúde do serviço. Telas, apps e compras ainda não foram validados nesta versão.
+
+### Teste real Google Play no Admin Android (09/11, HML)
+
+Admin Android 1.1.1 (4), build `4498ed3d`, com OTA de homologação; API `b6bea64`; empresa sintética; conta de License testing; cartão de teste, sem cobrança real. Tempo acelerado do Google (trial 3 min, mês 5 min). Resultado observado no aparelho e confirmado no banco e no Nginx da HML:
+
+| Teste | Resultado |
+|---|---|
+| Cancelar a folha do Google | Reserva liberada; sem assinatura |
+| Compra Starter com trial | Validada no servidor, acknowledgement feito, RTDN 200 |
+| Plano e permissões | Starter limitado às permissões do plano; Essentials com menu completo e 6 vagas |
+| Renovação | Trial virou ativa; vigência avançou |
+| Cancelamento | Renovação desligada; acesso mantido até o fim do período |
+| Expiração | Assinatura inativa; app voltou à tela de planos |
+| Nova compra após expirar, em outro plano | Essentials ativo; Starter preservado como histórico; sem conflito |
+| Reinstalação | Restauração automática 200; uma única assinatura ativa, sem nova compra |
+| Cadastro de conta nova com pagamento | Empresa autorizada na lista de teste; Starter ativo pelo `verify-purchase`, compra reconhecida, sem conflito; app foi direto ao produto |
+
+Tela Android de assinatura refeita no padrão do Menu e da Home, com estados separados (planos, compra concluída, assinante, cancelada), publicada por OTA só em `hml-billing`. iOS não foi alterado. As alterações do app seguem sem commit.
+
+**Pendência adiada por Rian (09/11):** conta Google com assinatura ativa de outra empresa impede a tela de planos de carregar na empresa aberta. A compra é recusada corretamente, mas o app trata a recusa como falha geral. Correção prevista só no Android, para depois da publicação.
+
+**Não coberto:** toque manual no botão Restaurar; compra pendente; mesma empresa no Web e no Crew; Stripe e Apple em sandbox; B7; produção real.
+
 ### Bloqueadores para produção
 
-0. R1 a R5 corrigidos localmente; validação integrada e das lojas pendente.
+0. R1 a R5 corrigidos e implantados na HML; ciclo Google validado no Admin Android; pendências acima.
 1. Os críticos B1 a B5 estão corrigidos localmente. Faltam commit, implantação na HML e validação real.
 2. Decidir como tratar B6 e os desvios de limite (guarda de provedor com flag desligada, preflight iOS).
 3. Saber o que roda em produção e medir no banco: linhas Google e Apple, duas linhas ativas, plano divergente, FREE vigentes, Workers legados, formato de `MOBILE_APP_PRODUCTS_JSON`.
