@@ -422,6 +422,22 @@ Eventos Stripe extras se `setupStripeWebhooks` rodar de novo; arquivo temporári
   - a compra nova segue barrada para empresa com 2 assinaturas ativas.
 - **Testes alterados, com motivo:** em `SubscriptionAccessConsumers.characterization.test.ts`, os casos que exigiam o bloqueio por conflito foram trocados pelo comportamento da produção, e o bloqueio ficou exigido para cadastro pendente. Há também um caso novo: a linha mais recente vencida continua decidindo, como antes.
 - **Reversão:** desfazer as alterações. Não há dado nem migration envolvidos.
+- **Na HML (`85720d9`, 10/11), banco cópia com 169 empresas:**
+  - **Antes × depois da correção:** 0 empresas mudaram. Os números crus da produção (7 + 10) eram quase todos trials grátis vencidos que continuam marcados como ativos, e o código novo já os descartava. A correção ficou como proteção, sem efeito nessa cópia. A estimativa de "17 empresas perderiam acesso" estava errada.
+  - **Status da produção `101d8b4` (reproduzido linha a linha) × código novo:**
+    - 153 empresas iguais;
+    - 13 passam de bloqueadas para liberadas no app: Stripe paga com data local desatualizada, que a web já liberava;
+    - 3 passam de liberadas para bloqueadas na web: ex-clientes com a assinatura paga inativa e só o trial de 2025 marcado como ativo. O app e o login de funcionários já as bloqueavam.
+  - **Nenhum pagante perde acesso.**
+  - **Status chamado de verdade (`GET /user/local-subscription-status`)** para as empresas com duas linhas ativas: 200, liberado, com plano e permissões.
+  - **Limite:** a cópia da HML não é idêntica à produção de hoje.
+- **Na produção real (rodada 4 do Codex, 10/11, só leitura, script com hashes conferidos):**
+  - 186 empresas: 162 bloqueadas hoje e no código novo, 21 liberadas hoje e no código novo;
+  - só as mesmas 3 mudam: ex-clientes liberados na web por um trial de 2025 que ficou marcado como ativo, e que o app já bloqueia hoje;
+  - a correção registrou 1 `multiple_subscriptions` e 1 `company_subscription_plan_mismatch`. **Sem ela, essas 2 empresas, que hoje estão liberadas, seriam bloqueadas.**
+  - **Nenhum pagante perde acesso.**
+  - **Limite:** a comparação usa o banco sem consultar Stripe, Apple ou Google, e não executa login real.
+  - **Decisão de Rian em 10/11:** os 3 ex-clientes ficam bloqueados também na web, como o código novo já faz. Não há alteração de código.
 
 ### Regressão de contrato: API antiga × nova com banco cópia (09/11)
 
