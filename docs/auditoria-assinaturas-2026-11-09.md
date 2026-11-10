@@ -341,7 +341,7 @@ Commit e migrations implantados; serviços ativos; isolamento de rede; flags; ca
 
 | # | Problema | Condição | Base |
 |---|---|---|---|
-| **B6** | Duas linhas ou plano divergente: bloqueio total, sem tela explicativa, empurrando para nova compra (risco de cobrança dupla) | Sem flag | **[V]/[R]** |
+| **B6** | Duas linhas ou plano divergente: bloqueio total, sem tela explicativa, empurrando para nova compra (risco de cobrança dupla). **Na produção são 7 + 10 empresas que hoje funcionam; corrigido localmente em 10/11, ver correções** | Sem flag | **[V]/[R]** |
 | **B7** | Worker legado com permissão herdada pode trocar o próprio cargo por Owner via `PUT /user` e comprar vagas reais. Já existia; o guarda não fecha. **Corrigido em `e667b54`, na HML em 09/11/2026:** o guarda valida `office_id` e `office.id`, e só Owner troca o próprio cargo. Testes automatizados passam. Na HML, em 10/11, o `worker@hml.test` (Worker legado com User Management) tentou virar Owner por `office.id`, por `office_id`, pelos dois juntos, e também virar Administrator: as quatro tentativas receberam 403 e o cargo não mudou. A edição de usuários pelo Owner na web segue normal. Promover **outro** usuário a Owner segue permitido (regra a decidir) | 331 usuários **[H]** | **[V]** |
 | **B8** | Primeiro `payment_failed` nega a API enquanto o Stripe ainda retenta | Sem flag; decisão de negócio | **[R]** |
 | **S1** | Google existente para de sincronizar sem a flag (503); produto legado não mapeia | **Só se houver Google em produção** | **[R]** |
@@ -412,6 +412,16 @@ Eventos Stripe extras se `setupStripeWebhooks` rodar de novo; arquivo temporári
 - Risco aceito: linha Stripe inativa que ainda esteja em cobrança no Stripe (`past_due`) não é distinguível sem consultar o Stripe. O cliente pode pagar nos dois provedores e, se o Stripe se recuperar, cair em B6.
 - Fora desta correção: S4 e S6 a S9. Recibo recusado por contrato realmente ativo continua cobrado.
 - Reversão: desfazer essas alterações. Sem dado nem migration envolvidos.
+
+**B6: corrigido localmente em 10/11, aprovado por Rian ("Corrige assim"). Sem commit e sem deploy.**
+- **O que a checagem da produção mostrou:** 7 empresas com 2 assinaturas Stripe ativas e 10 com `Company.planId` diferente do plano da assinatura. A produção (`101d8b4`) usa a linha ativa mais recente (`findFirst` por `startDate`) e nunca compara com `Company.planId`. O código novo marcava essas empresas como vencidas e zerava as permissões. Isso é regressão, não comportamento herdado, como este documento dizia antes.
+- **O que mudou em `resolveCompanySubscriptionStatus`:** com plano definido e sem cadastro pendente, os dois conflitos não bloqueiam. Vale a linha ativa mais recente que já começou, e a avaliação dela segue as regras de cada provedor. O conflito volta em `billingReview` e vai para o log como `[billing-review]` no status da web e do mobile.
+- **O que não mudou:**
+  - cadastro pendente e empresa sem plano continuam bloqueados, como a produção já faz no mobile;
+  - `evaluateSubscriptionAccess` continua apontando o conflito;
+  - a compra nova segue barrada para empresa com 2 assinaturas ativas.
+- **Testes alterados, com motivo:** em `SubscriptionAccessConsumers.characterization.test.ts`, os casos que exigiam o bloqueio por conflito foram trocados pelo comportamento da produção, e o bloqueio ficou exigido para cadastro pendente. Há também um caso novo: a linha mais recente vencida continua decidindo, como antes.
+- **Reversão:** desfazer as alterações. Não há dado nem migration envolvidos.
 
 ### Regressão de contrato: API antiga × nova com banco cópia (09/11)
 
