@@ -2,6 +2,7 @@ import { landingAnalyticsRoutes } from './landingAnalyticsRoutes'
 import { Router } from 'express'
 import { projectBudgetRoutes } from './projectBudgetRoutes'
 import { appAnalyticsRoutes } from './appAnalyticsRoutes'
+import { attendanceDiagnosticsRoutes } from './attendanceDiagnosticsRoutes'
 import { userRoutes } from './userRoutes'
 import { serviceRoutes } from './serviceRoutes'
 import { catalogRoutes } from './catalogRoutes'
@@ -78,6 +79,7 @@ const uploadImageController = new UploadImageController();
 const router = Router()
 router.use(projectBudgetRoutes)
 router.use(appAnalyticsRoutes)
+router.use(attendanceDiagnosticsRoutes)
 router.use(landingAnalyticsRoutes)
 // Nova configuração de upload para imagens genéricas
 const uploadImageGeneric = multer(
