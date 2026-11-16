@@ -7,6 +7,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
 import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours, getPaidShortGapMinutes } from "../../utils/paidShortGaps";
+import { clipTimecardAttendance, getOriginalTimecardFields, keepAutomaticBreakInStartPeriod, timecardOverlapWhere } from "../../utils/timecardRange";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -261,17 +262,8 @@ export class getByWorkerIdController {
             const attendances = await prisma.userAttendance.findMany({
                 where: {
                     user_id: workerId,
-                    check_in_time: {
-                        gte: startDate,
-                        lte: deadlineDate,
-                    },
+                    ...timecardOverlapWhere(startDate, deadlineDate),
                     AND: [
-                        {
-                            OR: [
-                                { check_out_time: { lte: deadlineDate } },
-                                { check_out_time: null }
-                            ]
-                        },
                         {
                             OR: [
                                 {
@@ -340,7 +332,9 @@ export class getByWorkerIdController {
                 attendance.check_in_time
             ));
 
+            attendances.forEach(attendance => clipTimecardAttendance(attendance, startDate, deadlineDate));
             applyEffectiveBreaksToAttendances(attendances as any[]);
+            keepAutomaticBreakInStartPeriod(attendances as any[]);
             applyPaidShortGapsToAttendances(attendances as any[]);
 
             const weeklyAttendances = new Map();
@@ -456,18 +450,19 @@ export class getByWorkerIdController {
                     const clientLocation = attendance.UserServiceProject?.service_project?.Project?.client?.location;
                     const checkInAddress = projectLocation || clientLocation || "";
 
+                    const original = getOriginalTimecardFields(attendance);
                     workersWithCorrectOvertime.push({
                         id: attendance.id,
                         note: attendance.note,
-                        check_in_time: attendance.check_in_time,
-                        check_out_time: attendance.check_out_time,
+                        check_in_time: original.checkIn,
+                        check_out_time: original.checkOut,
                         check_in_address: checkInAddress,
                         check_in_latitude: attendance.check_in_latitude,
                         check_in_longitude: attendance.check_in_longitude,
                         check_out_address: attendance.check_out_address,
                         check_out_latitude: attendance.check_out_latitude,
                         check_out_longitude: attendance.check_out_longitude,
-                        date: attendance.date,
+                        date: original.date,
                         user_id: attendance.user_id,
                         user_service_project_id: attendance.user_service_project_id,
                         isOvertime: attendance.isOvertime,
@@ -483,7 +478,7 @@ export class getByWorkerIdController {
                         break_hours: parseFloat((((attendance.__breakMinutesApplied as number) || 0) / 60).toFixed(2)),
                         paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
                         paid_short_gap_hours: parseFloat(getPaidShortGapHours(attendance).toFixed(2)),
-                        breaks: attendance.breakRecords || [],
+                        breaks: original.breaks,
                         hours_worked: parseFloat(dailyHours.toFixed(2)),
                         regular_hours: parseFloat(dailyHours.toFixed(2)),
                         overtime_hours: 0,

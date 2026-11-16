@@ -6,6 +6,7 @@ import { getPresignedUrl } from "../../utils/S3/getPresignedUrl";
 import { parseDateRange, getDefaultWeekRange, normalizeToDateOnly } from "../../utils/dateUtils";
 import { applyEffectiveBreaksToAttendances } from "../../utils/attendanceBreaks";
 import { applyPaidShortGapsToAttendances, getPaidShortGapHours, getPaidShortGapMinutes } from "../../utils/paidShortGaps";
+import { clipTimecardAttendance, getOriginalTimecardFields, keepAutomaticBreakInStartPeriod, timecardOverlapWhere } from "../../utils/timecardRange";
 
 function getAttendanceIdentity(attendance: any) {
     if (attendance?.id) {
@@ -243,20 +244,7 @@ export class getAllController {
                                 some: {
                                     user_attendances: {
                                         some: {
-                                            check_in_time: {
-                                                gte: startDate,
-                                                lte: deadlineDate,
-                                            },
-                                            OR: [
-                                                {
-                                                    check_out_time: {
-                                                        lte: deadlineDate,
-                                                    }
-                                                },
-                                                {
-                                                    check_out_time: null
-                                                }
-                                            ]
+                                            ...timecardOverlapWhere(startDate, deadlineDate)
                                         }
                                     }
                                 }
@@ -282,20 +270,7 @@ export class getAllController {
                                 select: {
                                     user_attendances: {
                                         where: {
-                                            check_in_time: {
-                                                gte: startDate,
-                                                lte: deadlineDate,
-                                            },
-                                            OR: [
-                                                {
-                                                    check_out_time: {
-                                                        lte: deadlineDate,
-                                                    }
-                                                },
-                                                {
-                                                    check_out_time: null
-                                                }
-                                            ]
+                                            ...timecardOverlapWhere(startDate, deadlineDate)
                                         },
                                         select: {
                                             id: true,
@@ -336,17 +311,8 @@ export class getAllController {
 
             const allAttendances = await prisma.userAttendance.findMany({
                 where: {
-                    check_in_time: {
-                        gte: startDate,
-                        lte: deadlineDate,
-                    },
+                    ...timecardOverlapWhere(startDate, deadlineDate),
                     AND: [
-                        {
-                            OR: [
-                                { check_out_time: { lte: deadlineDate } },
-                                { check_out_time: null }
-                            ]
-                        },
                         {
                             OR: [
                                 {
@@ -404,14 +370,8 @@ export class getAllController {
 
             const canceledProjectAttendances = await prisma.userAttendance.findMany({
                 where: {
-                    check_in_time: { gte: startDate, lte: deadlineDate },
+                    ...timecardOverlapWhere(startDate, deadlineDate),
                     AND: [
-                        {
-                            OR: [
-                                { check_out_time: { lte: deadlineDate } },
-                                { check_out_time: null }
-                            ]
-                        },
                         {
                             UserServiceProject: {
                                 service_project: {
@@ -455,7 +415,14 @@ export class getAllController {
                     service.UserServiceProject.flatMap(userService => userService.user_attendances)
                 )
             );
+            [...allAttendances, ...canceledProjectAttendances, ...nestedProjectAttendances]
+                .forEach(attendance => clipTimecardAttendance(attendance, startDate, deadlineDate));
             applyEffectiveBreaksToAttendances([
+                ...(allAttendances as any[]),
+                ...(canceledProjectAttendances as any[]),
+                ...(nestedProjectAttendances as any[])
+            ]);
+            keepAutomaticBreakInStartPeriod([
                 ...(allAttendances as any[]),
                 ...(canceledProjectAttendances as any[]),
                 ...(nestedProjectAttendances as any[])
@@ -565,9 +532,9 @@ export class getAllController {
                     }
                     canceledWorkerData.push({
                         nameWorker: attendance.user?.name || "",
-                        date: attendance.date,
-                        in: attendance.check_in_time,
-                        out: attendance.check_out_time,
+                        date: getOriginalTimecardFields(attendance).date,
+                        in: getOriginalTimecardFields(attendance).checkIn,
+                        out: getOriginalTimecardFields(attendance).checkOut,
                         break_minutes: breakMinutesApplied,
                         break_hours: parseFloat(breakHoursApplied.toFixed(2)),
                         paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
@@ -697,9 +664,9 @@ export class getAllController {
 
                         workerData.push({
                             nameWorker: attendance.user?.name || "",
-                            date: attendance.date,
-                            in: attendance.check_in_time,
-                            out: attendance.check_out_time,
+                            date: getOriginalTimecardFields(attendance).date,
+                            in: getOriginalTimecardFields(attendance).checkIn,
+                            out: getOriginalTimecardFields(attendance).checkOut,
                             break_minutes: breakMinutesApplied,
                             break_hours: parseFloat(breakHoursApplied.toFixed(2)),
                             paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
@@ -877,9 +844,9 @@ export class getAllController {
                             attendanceId: attendance.id,
                             note: attendance.note,
                             project: displayProject,
-                            date: attendance.date,
-                            in: attendance.check_in_time,
-                            out: attendance.check_out_time,
+                            date: getOriginalTimecardFields(attendance).date,
+                            in: getOriginalTimecardFields(attendance).checkIn,
+                            out: getOriginalTimecardFields(attendance).checkOut,
                             break_minutes: breakMinutesApplied,
                             break_hours: parseFloat(breakHoursApplied.toFixed(2)),
                             paid_short_gap_minutes: getPaidShortGapMinutes(attendance),
